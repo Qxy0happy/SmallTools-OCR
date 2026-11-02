@@ -513,7 +513,7 @@ func (s *supervisor) Start(ctx context.Context) (report.ServiceInfo, error) {
 		if err == nil {
 			s.readyMS = readyMS
 			started = true
-			return report.ServiceInfo{Port: port, ReadyMS: readyMS, Stopped: false}, nil
+			return report.ServiceInfo{PID: s.uvPID, Port: port, ReadyMS: readyMS, Stopped: false}, nil
 		}
 		exited := false
 		var exitCode int

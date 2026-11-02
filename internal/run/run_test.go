@@ -23,6 +23,7 @@ import (
 	"mineru-ocr/internal/mineru"
 	"mineru-ocr/internal/report"
 	"mineru-ocr/internal/service"
+	"mineru-ocr/internal/state"
 )
 
 type fakeTasks struct {
@@ -84,6 +85,13 @@ func (f *fakeTasks) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/tasks/"):
 		id := strings.TrimPrefix(r.URL.Path, "/v1/tasks/")
 		w.Header().Set("Content-Type", "application/json")
+		if id == "canceled.pdf" {
+			json.NewEncoder(w).Encode(map[string]any{
+				"status": "canceled",
+				"files":  []map[string]any{{"status": "canceled"}},
+			})
+			return
+		}
 		json.NewEncoder(w).Encode(map[string]any{
 			"status": "completed",
 			"files":  []map[string]any{{"status": "completed", "result_url": "/download/" + id}},
@@ -343,3 +351,68 @@ func TestRunCancelCallsCancelAndStop(t *testing.T) {
 }
 
 var _ = fmt.Sprintf
+
+func TestRunCanceledTaskFails(t *testing.T) {
+	dir := t.TempDir()
+	ft := newFakeTasks(t)
+	srv := httptest.NewServer(ft)
+	defer srv.Close()
+
+	cfg, _, _ := newCfg(dir, true)
+	code, out, _, _ := runCase(t, dir, []string{"canceled.pdf"}, cfg, srv, ft, nil)
+	if code != 1 {
+		t.Fatalf("exit code %d want 1", code)
+	}
+	var rep report.Report
+	if err := json.Unmarshal(out.Bytes(), &rep); err != nil {
+		t.Fatalf("report: %v", err)
+	}
+	if len(rep.Files) != 1 || rep.Files[0].Error == nil {
+		t.Fatalf("expected one failed file, got %+v", rep.Files)
+	}
+	if rep.Files[0].Error.Code != "task_canceled" {
+		t.Fatalf("error code %q want task_canceled", rep.Files[0].Error.Code)
+	}
+}
+
+func TestRunCleansStaleServiceRecord(t *testing.T) {
+	dir := t.TempDir()
+	st, err := state.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.Service = &state.ServiceRecord{PID: 4242, Port: 1234}
+	if err := st.Save(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	ft := newFakeTasks(t)
+	srv := httptest.NewServer(ft)
+	defer srv.Close()
+
+	var cleaned []service.Record
+	cfg, _, _ := newCfg(dir, true)
+	makeFiles(t, dir, []string{"a.pdf"})
+	sup := &fakeSup{port: srv.Listener.Addr().(*net.TCPAddr).Port}
+	deps := Deps{
+		NewClient:     func(baseURL string) *mineru.Client { return mineru.New(baseURL) },
+		NewSupervisor: func(opts service.Options) service.Supervisor { return sup },
+		CleanupStale: func(records []service.Record) error {
+			cleaned = append(cleaned, records...)
+			return nil
+		},
+	}
+	if code := Run(context.Background(), cfg, deps); code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	if len(cleaned) != 1 || cleaned[0].PID != 4242 || cleaned[0].Port != 1234 {
+		t.Fatalf("cleanup records %+v", cleaned)
+	}
+	after, err := state.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Service != nil {
+		t.Fatalf("service record not cleared: %+v", after.Service)
+	}
+}

@@ -23,6 +23,7 @@ import (
 type Deps struct {
 	NewClient     func(baseURL string) *mineru.Client
 	NewSupervisor func(opts service.Options) service.Supervisor
+	CleanupStale  func(records []service.Record) error
 }
 
 func Run(ctx context.Context, cfg app.Config, deps ...Deps) int {
@@ -103,11 +104,6 @@ func Run(ctx context.Context, cfg app.Config, deps ...Deps) int {
 	}
 
 	// fingerprint + skip decision
-	type fileInfo struct {
-		path string
-		hash string
-		size int64
-	}
 	var toProcess []string
 	skipped := 0
 	skipMap := map[string]bool{}
@@ -134,6 +130,29 @@ func Run(ctx context.Context, cfg app.Config, deps ...Deps) int {
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt)
 	defer cancel()
 
+	if d.CleanupStale == nil {
+		d.CleanupStale = func(records []service.Record) error { return service.CleanupStale(records) }
+	}
+
+	// clear any service instance left behind by a previous crashed run
+	var stale []service.Record
+	for _, r := range absRoots {
+		if st, ok := states[r]; ok && st.Service != nil {
+			stale = append(stale, service.Record{PID: st.Service.PID, Port: st.Service.Port})
+		}
+	}
+	if len(stale) > 0 {
+		if err := d.CleanupStale(stale); err != nil {
+			fmt.Fprintf(cfg.Err, "warning: stale service cleanup: %v\n", err)
+		}
+		for _, r := range absRoots {
+			if st, ok := states[r]; ok && st.Service != nil {
+				st.Service = nil
+				_ = st.Save(r)
+			}
+		}
+	}
+
 	// service options
 	logStream := cfg.Err
 	if cfg.NoServiceLogStream {
@@ -157,6 +176,15 @@ func Run(ctx context.Context, cfg app.Config, deps ...Deps) int {
 		}
 		fmt.Fprintln(cfg.Err, err)
 		return 2
+	}
+	if svcInfo.PID > 0 {
+		stateMu.Lock()
+		for _, r := range absRoots {
+			st := states[r]
+			st.Service = &state.ServiceRecord{PID: svcInfo.PID, Port: svcInfo.Port, StartedAt: time.Now()}
+			_ = st.Save(r)
+		}
+		stateMu.Unlock()
 	}
 
 	client := d.NewClient(fmt.Sprintf("http://127.0.0.1:%d", svcInfo.Port))
@@ -209,10 +237,7 @@ func Run(ctx context.Context, cfg app.Config, deps ...Deps) int {
 				results[path] = fr
 				completedCount++
 				idx := completedCount
-				resMu.Unlock()
-
 				p := report.Progress{Out: cfg.Err, Total: len(toProcess)}
-				resMu.Lock()
 				p.Line(idx, fr)
 				resMu.Unlock()
 			}
@@ -257,8 +282,18 @@ func Run(ctx context.Context, cfg app.Config, deps ...Deps) int {
 	// stop service
 	stopCtx, stopCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer stopCancel()
-	svcInfo.Stopped = true
 	_ = sup.Stop(stopCtx)
+	svcInfo.Stopped = true
+	if svcInfo.PID > 0 {
+		stateMu.Lock()
+		for _, r := range absRoots {
+			if st, ok := states[r]; ok && st.Service != nil {
+				st.Service = nil
+				_ = st.Save(r)
+			}
+		}
+		stateMu.Unlock()
+	}
 
 	// build report
 	r := &report.Report{
@@ -325,23 +360,25 @@ func isUnder(file, root string) bool {
 	return !strings.HasPrefix(rel, "..")
 }
 
-func indexOf(files []string, path string) int {
-	for i, f := range files {
-		if f == path {
-			return i
-		}
-	}
-	return 0
-}
-
 func processFile(ctx context.Context, client *mineru.Client, path string, cfg app.Config, hash string, size int64, root string, states map[string]*state.State, smu *sync.Mutex) report.FileResult {
 	start := time.Now()
+	ext := strings.ToLower(filepath.Ext(path))
+	fileTier := ""
+	if ext == ".pdf" {
+		fileTier = cfg.Tier
+	}
+	stateTier := fileTier
+	if stateTier == "" {
+		stateTier = "flash"
+	}
 	fail := func(err error) report.FileResult {
 		fr := report.FileResult{Path: path, Status: report.StatusFailed, DurationMS: time.Since(start).Milliseconds()}
 		if errors.Is(err, context.Canceled) {
 			fr.Error = &report.Error{Code: "canceled", Message: "canceled"}
 		} else if me, ok := err.(*mineru.Error); ok {
 			fr.Error = &report.Error{Code: me.Code, Message: me.Message}
+		} else if errors.Is(err, mineru.ErrSourceChanged) {
+			fr.Error = &report.Error{Code: "source_changed", Message: "source file changed during upload"}
 		} else if err != nil {
 			fr.Error = &report.Error{Code: "error", Message: err.Error()}
 		}
@@ -351,17 +388,11 @@ func processFile(ctx context.Context, client *mineru.Client, path string, cfg ap
 			if st.Files == nil {
 				st.Files = map[string]state.FileRecord{}
 			}
-			st.Files[path] = state.FileRecord{Size: size, Hash: hash, Tier: cfg.Tier, Status: "failed", Error: &state.Error{Code: fr.Error.Code, Message: fr.Error.Message}, DurationMS: fr.DurationMS, UpdatedAt: time.Now()}
+			st.Files[path] = state.FileRecord{Size: size, Hash: hash, Tier: stateTier, Status: "failed", Error: &state.Error{Code: fr.Error.Code, Message: fr.Error.Message}, DurationMS: fr.DurationMS, UpdatedAt: time.Now()}
 			_ = st.Save(root)
 			smu.Unlock()
 		}
 		return fr
-	}
-
-	ext := strings.ToLower(filepath.Ext(path))
-	fileTier := ""
-	if ext == ".pdf" {
-		fileTier = cfg.Tier
 	}
 
 	// Create
@@ -382,41 +413,37 @@ func processFile(ctx context.Context, client *mineru.Client, path string, cfg ap
 	// Poll
 	var resultURL string
 	pollStart := time.Now()
+poll:
 	for {
 		status, detail, err := client.Poll(ctx, taskID)
 		if err != nil {
 			if ctx.Err() != nil {
 				cancelTask(client, taskID)
+				return fail(context.Canceled)
 			}
-			return fail(err)
-		}
-		if detail.Error != nil {
-			err := &mineru.Error{Code: detail.Error.Code, Message: detail.Error.Message}
 			return fail(err)
 		}
 		if detail.ResultURL != "" {
 			resultURL = detail.ResultURL
 		}
-		if status == "completed" || detail.Status == "completed" {
-			if resultURL == "" {
-				// maybe not ready
-			} else {
-				break
-			}
+		current := status
+		if current == "" {
+			current = detail.Status
 		}
-		if status == "failed" || detail.Status == "failed" {
-			code := "task_failed"
-			msg := "task failed"
-			if detail.Error != nil {
-				code = detail.Error.Code
-				msg = detail.Error.Message
+		switch current {
+		case "completed":
+			if resultURL == "" {
+				return fail(&mineru.Error{Code: "missing_result", Message: "task completed without result_url"})
+			}
+			break poll
+		case "failed", "canceled":
+			code, msg := "task_"+current, "task "+current
+			if detail.Error != nil && detail.Error.Code != "" {
+				code, msg = detail.Error.Code, detail.Error.Message
 			}
 			return fail(&mineru.Error{Code: code, Message: msg})
 		}
-		if resultURL != "" && (status == "completed" || detail.Status == "completed") {
-			break
-		}
-		delay := 1 * time.Second
+		delay := time.Second
 		if time.Since(pollStart) > 60*time.Second {
 			delay = 5 * time.Second
 		}
@@ -427,13 +454,11 @@ func processFile(ctx context.Context, client *mineru.Client, path string, cfg ap
 		case <-time.After(delay):
 		}
 	}
-	if resultURL == "" {
-		// poll one more? just fail
-	}
 	// Download
 	zipPath := artifact.ZipPathFor(path)
 	partPath := zipPath + ".part"
 	if err := client.Download(ctx, resultURL, partPath); err != nil {
+		_ = os.Remove(partPath)
 		if ctx.Err() != nil {
 			cancelTask(client, taskID)
 		}
@@ -444,6 +469,7 @@ func processFile(ctx context.Context, client *mineru.Client, path string, cfg ap
 		return fail(err)
 	}
 	if err := artifact.Write(partPath, zipPath); err != nil {
+		_ = os.Remove(partPath)
 		return fail(err)
 	}
 
@@ -454,7 +480,7 @@ func processFile(ctx context.Context, client *mineru.Client, path string, cfg ap
 		if st.Files == nil {
 			st.Files = map[string]state.FileRecord{}
 		}
-		st.Files[path] = state.FileRecord{Size: size, Hash: hash, Tier: cfg.Tier, ZipPath: zipPath, Status: "completed", DurationMS: fr.DurationMS, UpdatedAt: time.Now()}
+		st.Files[path] = state.FileRecord{Size: size, Hash: hash, Tier: stateTier, ZipPath: zipPath, Status: "completed", DurationMS: fr.DurationMS, UpdatedAt: time.Now()}
 		_ = st.Save(root)
 		smu.Unlock()
 	}

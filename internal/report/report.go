@@ -29,6 +29,7 @@ type FileResult struct {
 }
 
 type ServiceInfo struct {
+	PID     int   `json:"-"`
 	Port    int   `json:"port"`
 	ReadyMS int64 `json:"ready_ms"`
 	Stopped bool  `json:"stopped"`
@@ -54,7 +55,8 @@ func (r *Report) Add(fr FileResult) {
 }
 
 func Summary(w io.Writer, r *Report) {
-	fmt.Fprintf(w, "scanned=%d skipped=%d completed=%d failed=%d exit=%d\n", r.Scanned, r.Skipped, r.Completed, r.Failed, r.ExitCode)
+	fmt.Fprintf(w, "%-8s %-8s %-10s %-7s %-5s\n", "scanned", "skipped", "completed", "failed", "exit")
+	fmt.Fprintf(w, "%-8d %-8d %-10d %-7d %-5d\n", r.Scanned, r.Skipped, r.Completed, r.Failed, r.ExitCode)
 }
 
 func WriteJSON(w io.Writer, r *Report) error {
