@@ -28,7 +28,7 @@ func New(opts Options) Supervisor
 - **就绪**：每 250ms `GET /v1/health`（1s 超时），连接被拒算未就绪；总超时 **120s**；进程先退出 → 读日志尾部 50 行，退出码 `3` 或含 `WinError 10048` → 换端口重试一次；退出码 `1` 且含 `Unsupported tier` → 不可重试；其余带 `mineru-kit models download` 提示。
 - **存活监控**：`Health` 每 5s 被调用一次（由 orchestrator 驱动）；连续 3 次失败即判定失联。
 - **关停**：`GenerateConsoleCtrlEvent(CTRL_BREAK_EVENT, uvPID)` → 等 5s → `taskkill /T /F /PID <uvPID>`；随后确认端口不可连（≤5s）。
-- **残留清理** `CleanupStale(records []state.ServiceRecord) error`：pid 存活 + 端口 health 200 + `Get-CimInstance Win32_Process` 的 CommandLine 同时含 `mineru-kit`、`api-server`、`--port <port>` 三条同时成立才关停；否则警告不杀。
+- **残留清理** `CleanupStale(records []Record) error`，其中 `type Record struct{ PID, Port int }`（不依赖 state 包）：pid 存活 + 端口 health 200 + `Get-CimInstance Win32_Process` 的 CommandLine 同时含 `mineru-kit`、`api-server`、`--port <port>` 三条同时成立才关停；否则警告不杀。
 - Windows 专用：非 Windows 返回 `ErrUnsupportedPlatform`。Win32 调用用 `syscall` 的 `NewLazyDLL`，不新增依赖。
 
 ## 验收
