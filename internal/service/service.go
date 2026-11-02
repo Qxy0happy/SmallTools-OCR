@@ -111,6 +111,8 @@ func FreePort() (int, error) {
 var freePort = FreePort
 var pickPort = FreePort
 var getFreePort = FreePort
+var lookPath = exec.LookPath
+var execCommand = exec.Command
 
 func BuildCommandArgs(opts Options, port int) []string {
 	return []string{
@@ -179,7 +181,11 @@ var waitReady = WaitReady
 var pollReady = WaitReady
 var WaitReadyPoll = WaitReady
 
-func ClassifyExit(code int, tail string) (bool, error) {
+func ClassifyExit(code int, tail string, project ...string) (bool, error) {
+	proj := "<project>"
+	if len(project) > 0 && project[0] != "" {
+		proj = project[0]
+	}
 	if code == 3 || strings.Contains(tail, "WinError 10048") {
 		return true, fmt.Errorf("port in use")
 	}
@@ -190,7 +196,7 @@ func ClassifyExit(code int, tail string) (bool, error) {
 	if msg == "" {
 		msg = "no log output"
 	}
-	return false, fmt.Errorf("service failed to start; run `mineru-kit models download`: %s", msg)
+	return false, fmt.Errorf("service failed to start; run `uv run --project %s mineru-kit models download`: %s", proj, msg)
 }
 
 var classifyExit = ClassifyExit
@@ -438,9 +444,12 @@ func newSupervisor(opts Options) Supervisor {
 }
 
 func (s *supervisor) Start(ctx context.Context) (report.ServiceInfo, error) {
+	if _, err := lookPath("uv"); err != nil {
+		return report.ServiceInfo{}, fmt.Errorf("uv not found; install uv (https://docs.astral.sh/uv/): %w", err)
+	}
 	port := s.opts.Port
 	if port == 0 {
-		p, err := FreePort()
+		p, err := freePort()
 		if err != nil {
 			return report.ServiceInfo{}, err
 		}
@@ -448,7 +457,7 @@ func (s *supervisor) Start(ctx context.Context) (report.ServiceInfo, error) {
 	}
 	s.port = port
 
-	for attempt := 0; attempt < 2; attempt++ {
+	for attempt := range 2 {
 		if s.opts.LogPath != "" {
 			f, err := os.OpenFile(s.opts.LogPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 			if err == nil {
@@ -456,7 +465,7 @@ func (s *supervisor) Start(ctx context.Context) (report.ServiceInfo, error) {
 			}
 		}
 		args := BuildCommandArgs(s.opts, port)
-		cmd := exec.Command("uv", args...)
+		cmd := execCommand("uv", args...)
 		var w io.Writer
 		if s.logFile != nil {
 			if s.opts.LogStream != nil {
@@ -482,7 +491,7 @@ func (s *supervisor) Start(ctx context.Context) (report.ServiceInfo, error) {
 		s.doneCh = make(chan error, 1)
 		go func() { s.doneCh <- cmd.Wait() }()
 
-		readyMS, err := WaitReady(ctx, port)
+		readyMS, err := waitReady(ctx, port)
 		if err == nil {
 			s.readyMS = readyMS
 			return report.ServiceInfo{Port: port, ReadyMS: readyMS, Stopped: false}, nil
@@ -497,7 +506,7 @@ func (s *supervisor) Start(ctx context.Context) (report.ServiceInfo, error) {
 			} else if werr != nil {
 				exitCode = -1
 			}
-		default:
+		case <-time.After(100 * time.Millisecond):
 		}
 		_ = killProcess(s.uvPID)
 		if s.logFile != nil {
@@ -507,10 +516,10 @@ func (s *supervisor) Start(ctx context.Context) (report.ServiceInfo, error) {
 
 		if exited {
 			tail := readLogTail(s.opts.LogPath, 50)
-			retry, classErr := ClassifyExit(exitCode, tail)
+			retry, classErr := ClassifyExit(exitCode, tail, s.opts.Project)
 			if retry && attempt == 0 {
 				if s.opts.Port == 0 {
-					np, err := FreePort()
+					np, err := freePort()
 					if err == nil {
 						port = np
 						s.port = port
