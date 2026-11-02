@@ -1,7 +1,7 @@
 # 14 — 指纹、状态与产物
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: 13
 
 规格：[`../spec.md`](../spec.md) §5、§7 第 5 步。
@@ -29,3 +29,9 @@ Blocked by: 13
 - `go build ./... && go vet ./... && gofmt -l .` 无输出；`go test ./...` 全绿。
 - 测试覆盖：指纹稳定且与已知向量一致（同内容两次相同、改一字节即不同）；`Save`/`Load` 往返；损坏 JSON → 生成 `.bak` 且返回 `ErrCorrupt`；`ShouldSkip` 的三种不满足（hash 不同 / zip 缺失 / zip 无 markdown.md）；`ZipPathFor` 同名不同扩展名不冲突；`Validate` 对空文件、非 zip、缺 `markdown.md` 的 zip 都报错。
 - 不新增依赖。
+
+## Answer
+
+已实现：`internal/state`（xxh3-128 指纹、Load/Save 原子写、`ShouldSkip` 三条件、损坏文件备份为 `.bak`）与 `internal/artifact`（`ZipPathFor`、`Validate` 要求 `markdown.md`、`Write` rename）。
+
+证据：`internal/state/state_test.go`、`internal/artifact/artifact_test.go`；`go test -race ./...` 全绿。

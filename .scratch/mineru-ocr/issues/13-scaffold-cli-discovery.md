@@ -1,7 +1,7 @@
 # 13 — 骨架、CLI 与发现
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: —
 
 规格：[`../spec.md`](../spec.md) §2 §3 §4 §9 §10。
@@ -41,3 +41,9 @@ Blocked by: —
 ## 边界
 
 非 `--dry-run` 路径在票据 17 之前可以返回明确的“尚未实现”错误（退出 2）；票据 17 必须把它替换成真实流水线，最终交付不得留下占位实现。
+
+## Answer
+
+已实现并合入 `impl/mineru-ocr`：`go.mod`（module mineru-ocr，依赖 xxh3 + pflag）、`internal/app`（pflag、flag 与位置参数交错、`MINERU_PROJECT` 环境变量、flag 帮助文案）、`internal/report`（Report/FileResult/Progress/Summary/JSON）、`internal/discover`（5 扩展名、隐藏目录/符号链接跳过、跨根去重与排序）、`internal/run` 扫描与 `--dry-run`。
+
+证据：`internal/app/app_test.go`、`internal/discover/discover_test.go`；`go run ./cmd/mineru-ocr D:/Cache/Temp/ocr-smoke --dry-run` 只列出 `a.pdf`、退出 0、不写状态文件；无参数退出 2。

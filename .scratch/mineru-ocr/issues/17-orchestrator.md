@@ -1,7 +1,7 @@
 # 17 — 编排：worker 池、流水线、报告、退出码
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: 13, 14, 15, 16
 
 规格：[`../spec.md`](../spec.md) §3 §6.3 §7 §8。
@@ -34,3 +34,9 @@ Blocked by: 13, 14, 15, 16
   - 取消上下文 → 在飞任务收到 `Cancel`、`Stop` 被调用、返回 130。
 - 并发：`-race` 下无数据竞争。
 - `go build ./... && go vet ./... && gofmt -l . && go test -race ./...` 全绿。
+
+## Answer
+
+已实现 `internal/run`：worker 池、逐文件 create/upload/poll/download/validate/rename、状态原子更新（含 service 记录写入与清理）、`--service-log` 默认值、健康监控（5s/3 次 → 停止派发并取消在飞、30s 上限、退出 2）、Ctrl+C（Cancel → Stop → 130）、进度行与汇总/JSON、启动前 `CleanupStale`。
+
+测试 `internal/run/run_test.go` 10 个用例（3 文件成功、二次全跳过零 HTTP、删 zip 只重做、单文件 400、500 重试、JSON 字段、健康丢失、取消、canceled 终态、残留清理）。`CC=clang go test -race ./...` 全绿。

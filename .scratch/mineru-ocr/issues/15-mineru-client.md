@@ -1,7 +1,7 @@
 # 15 — MinerU HTTP 客户端
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: 13
 
 规格：[`../spec.md`](../spec.md) §7。
@@ -36,3 +36,7 @@ func (c *Client) Cancel(ctx context.Context, taskID string) error        // 5s �
 
 - `httptest` 覆盖：PDF 请求含 `tier=advanced`、Office 请求无 `tier`；`Content-Length` 等于文件大小；202 → upload → 200；轮询 `running`→`completed`；`failed` 时错误码透出；500 重试 2 次后成功；400 不重试；下载写到临时文件；`Health` 在 500 时返回错误。
 - `go build ./... && go vet ./... && gofmt -l . && go test ./...` 全绿；不新增依赖。
+
+## Answer
+
+已实现 `internal/mineru`（Health/Create/Upload/Poll/Download/Cancel、`Error{Code,Message,Status,Retryable}`、`Retry` 0.25/0.5/1s、`ErrSourceChanged`、重定向与超时）。测试 `internal/mineru/client_test.go` 12 个用例（PDF 带 tier、Office 不带、Content-Length、轮询终态、failed 透传、500 重试、400 不重试、下载、重定向、Health）。

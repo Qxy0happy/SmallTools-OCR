@@ -1,7 +1,7 @@
 # 18 — 真实服务 E2E 与验收
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: 17
 
 规格：[`../spec.md`](../spec.md) §10。
@@ -17,3 +17,9 @@ Blocked by: 17
 - `go test -tags=e2e ./...` 在 MinerU 环境可用时通过（本机 `MINERU_PROJECT=D:/Projects/Python/MinerU`）；默认 `go test ./...` 不触发 e2e。
 - 跑完后无 `uv`/`python` 残留、端口释放。
 - `go build ./... && go vet ./... && gofmt -l . && go test ./...` 全绿。
+
+## Answer
+
+已实现 `internal/testfixture`（最小 1 页 PDF 与 docx 生成器）与 `internal/e2e/e2e_test.go`（`//go:build e2e`）：真实 `uv run --project` 启动服务 → 两个文件解析成功 → 二次全跳过 → 破坏 zip 后只重做该文件 → 端口释放、无 uv/python 残留、stderr 含 `[service]` 行。
+
+实跑证据：`go test -tags=e2e ./internal/e2e -count=1` → `ok ... 124.130s`；日志可见 `Application startup complete.`、`POST /v1/tasks` 202、`PUT .../uploads/...` 200、`GET /v1/files/.../content` 200、`[1/1] ok a.pdf 9.2s`。

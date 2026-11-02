@@ -1,7 +1,7 @@
 # 16 — 服务监管（启动/就绪/关停/残留）
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: 13
 
 规格：[`../spec.md`](../spec.md) §6。
@@ -36,3 +36,11 @@ func New(opts Options) Supervisor
 - 单测（无真实进程）：命令参数拼装、空闲端口、日志前缀 writer（多行/半行/并发）、就绪轮询（`httptest` 延迟 200）、就绪超时、退出码 3 换端口重试一次、`Unsupported tier` 不重试、`CleanupStale` 三条判据的真值表（用注入的 fake `pidAlive`/`health`/`commandLine`）。
 - 进程级测试放 `-tags=e2e`，默认不跑。
 - `go build ./... && go vet ./... && gofmt -l . && go test ./...` 全绿；不新增依赖。
+
+## Answer
+
+已实现 `internal/service`：空闲端口、`uv run --project ... api-server --port --upload-dir <temp> --tier --concurrency --preload-models`、日志双写（文件 + `[service]` 前缀实时透传）、就绪轮询 250ms/120s、退出码 3 换端口重试一次、`Unsupported tier` 不重试、`CTRL_BREAK_EVENT` → 5s → `taskkill /T /F`、`CleanupStale` 三判据、`exec.LookPath("uv")` 预检、启动失败提示 `uv run --project <project> mineru-kit models download`。
+
+补充：`--upload-dir` 指向 `%TEMP%/mineru-ocr-<port>` 并在 Stop 清理（否则 MinerU 会在 cwd 生成 `blobs/`）。
+
+证据：`internal/service/service_test.go` 15 个用例。
