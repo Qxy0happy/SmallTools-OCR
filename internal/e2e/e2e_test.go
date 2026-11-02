@@ -58,9 +58,6 @@ func runE2E(t *testing.T, dir string) (int, *report.Report, string, string) {
 }
 
 func TestE2EFull(t *testing.T) {
-	if os.Getenv("MINERU_PROJECT") == "" {
-		// app.Defaults falls back to D:/Projects/Python/MinerU
-	}
 	dir, err := os.MkdirTemp("", "mineru-e2e-*")
 	if err != nil {
 		t.Fatal(err)
