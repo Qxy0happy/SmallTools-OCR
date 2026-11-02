@@ -74,9 +74,13 @@ func Run(ctx context.Context, cfg app.Config, deps ...Deps) int {
 		}
 		absRoots = append(absRoots, filepath.Clean(a))
 	}
+	if cfg.ServiceLog == "" && len(absRoots) > 0 {
+		cfg.ServiceLog = filepath.Join(absRoots[0], ".mineru-service.log")
+	}
 
 	// load state per root
 	states := map[string]*state.State{}
+	var stateMu sync.Mutex
 	rootForFile := map[string]string{}
 	for _, r := range absRoots {
 		st, err := state.Load(r)
@@ -180,7 +184,7 @@ func Run(ctx context.Context, cfg app.Config, deps ...Deps) int {
 				if herr != nil {
 					failures++
 					if failures >= 3 {
-						lostOnce.Do(func() { close(lostCh) })
+						lostOnce.Do(func() { close(lostCh); cancel() })
 						return
 					}
 				} else {
@@ -189,10 +193,10 @@ func Run(ctx context.Context, cfg app.Config, deps ...Deps) int {
 			}
 		}
 	}()
-
 	// results collection
 	results := make(map[string]report.FileResult)
 	var resMu sync.Mutex
+	completedCount := 0
 	jobs := make(chan string, len(toProcess))
 	var wg sync.WaitGroup
 	for i := 0; i < workers; i++ {
@@ -200,19 +204,17 @@ func Run(ctx context.Context, cfg app.Config, deps ...Deps) int {
 		go func() {
 			defer wg.Done()
 			for path := range jobs {
-				if ctx.Err() != nil {
-					// still attempt cancel handling inside processFile
-				}
 				fr := processFile(ctx, client, path, cfg, hashes[path], sizes[path], rootForFile[path], states, &stateMu)
 				resMu.Lock()
 				results[path] = fr
+				completedCount++
+				idx := completedCount
 				resMu.Unlock()
 
-				// progress line
-				// index among all files
-				idx := indexOf(files, path) + 1
-				p := report.Progress{Out: cfg.Err, Total: len(files)}
+				p := report.Progress{Out: cfg.Err, Total: len(toProcess)}
+				resMu.Lock()
 				p.Line(idx, fr)
+				resMu.Unlock()
 			}
 		}()
 	}
@@ -291,10 +293,10 @@ func Run(ctx context.Context, cfg app.Config, deps ...Deps) int {
 	r.Failed = failed
 
 	exitCode := 0
-	if canceled {
-		exitCode = 130
-	} else if lost {
+	if lost {
 		exitCode = 2
+	} else if canceled {
+		exitCode = 130
 	} else if failed > 0 {
 		exitCode = 1
 	}
@@ -303,6 +305,7 @@ func Run(ctx context.Context, cfg app.Config, deps ...Deps) int {
 	if cfg.JSON {
 		if err := report.WriteJSON(cfg.Out, r); err != nil {
 			fmt.Fprintln(cfg.Err, err)
+			return 2
 		}
 	} else {
 		report.Summary(cfg.Out, r)
@@ -310,8 +313,6 @@ func Run(ctx context.Context, cfg app.Config, deps ...Deps) int {
 
 	return exitCode
 }
-
-var stateMu sync.Mutex
 
 func isUnder(file, root string) bool {
 	rel, err := filepath.Rel(root, file)
@@ -351,8 +352,8 @@ func processFile(ctx context.Context, client *mineru.Client, path string, cfg ap
 				st.Files = map[string]state.FileRecord{}
 			}
 			st.Files[path] = state.FileRecord{Size: size, Hash: hash, Tier: cfg.Tier, Status: "failed", Error: &state.Error{Code: fr.Error.Code, Message: fr.Error.Message}, DurationMS: fr.DurationMS, UpdatedAt: time.Now()}
-			smu.Unlock()
 			_ = st.Save(root)
+			smu.Unlock()
 		}
 		return fr
 	}
@@ -454,8 +455,8 @@ func processFile(ctx context.Context, client *mineru.Client, path string, cfg ap
 			st.Files = map[string]state.FileRecord{}
 		}
 		st.Files[path] = state.FileRecord{Size: size, Hash: hash, Tier: cfg.Tier, ZipPath: zipPath, Status: "completed", DurationMS: fr.DurationMS, UpdatedAt: time.Now()}
-		smu.Unlock()
 		_ = st.Save(root)
+		smu.Unlock()
 	}
 	return fr
 }
