@@ -101,6 +101,7 @@ mineru-ocr <root>... [flags]
 
 ### 6.2 端口与启动
 
+0. 启动前 `exec.LookPath("uv")`；缺失则退出 2，提示安装 uv（https://docs.astral.sh/uv/）。所有 Python 侧执行（服务、模型下载、e2e）一律经 `uv run --project`，禁止直接调用系统 `python`/`pip`。
 1. `net.Listen("tcp", "127.0.0.1:0")` 取端口后立即关闭；`--port` 非 0 时以其为准。
 2. 启动：
    ```
@@ -150,6 +151,7 @@ worker 池大小 = `--workers`；每 worker 同一时刻推进一个文件；服
 
 - Go 1.27+，Windows 目标；非 Windows 直接退出 2（本规格只覆盖 Windows 进程控制）。
 - 依赖仅：`github.com/zeebo/xxh3`、`github.com/spf13/pflag`。
+- Python 环境全部由 uv 管理与运行：子进程固定为 `uv run --project <project> mineru-kit ...`，代码中不出现裸 `python`/`pip` 调用。
 - 建议包结构：`cmd/mineru-ocr`、`internal/discover`、`internal/state`、`internal/mineru`（HTTP 客户端）、`internal/service`（进程监管）、`internal/run`（编排）、`internal/report`。
 
 ## 10. 验收标准
@@ -159,7 +161,8 @@ worker 池大小 = `--workers`；每 worker 同一时刻推进一个文件；服
 - 首次 `go run . <fixture>`：生成 `<basename>.<ext>.zip`，退出 0，状态记 completed。
 - 第二次运行：全部跳过，退出 0。
 - 删除其中一个 zip 后重跑：该文件重做，其余跳过。
-- `--mineru-project` 指向空目录：退出 2，stderr 含日志尾部与 `mineru-kit models download` 提示。
+- `--mineru-project` 指向空目录：退出 2，stderr 含日志尾部与 `uv run --project <project> mineru-kit models download` 提示。
+- PATH 中没有 `uv`：退出 2，提示安装 uv，且不启动任何服务。
 - 运行中 Ctrl+C：在飞任务取消、服务退出、端口释放、无 `uv`/`python` 残留、退出 130。
 - 启动期间 stderr 实时出现 `[service]` 前缀日志（可见 `Initializing VLM client`、`Application startup complete.`、`Uvicorn running on http://127.0.0.1:<port>`），且与 `--service-log` 文件内容一致；`--no-service-log-stream` 时 stderr 无 `[service]` 行而文件仍有内容。
 - 手工制造残留（`taskkill /F` 杀宿主）后重跑：按 §6.1 清理旧实例并正常完成。
