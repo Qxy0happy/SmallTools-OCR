@@ -7,7 +7,9 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -17,7 +19,7 @@ import (
 func TestBuildCommandArgs(t *testing.T) {
 	opts := Options{Project: "proj", Tier: "advanced", Workers: 4}
 	got := BuildCommandArgs(opts, 8080)
-	want := []string{"run", "--project", "proj", "mineru-kit", "api-server", "--port", "8080", "--tier", "advanced", "--concurrency", "4", "--preload-models"}
+	want := []string{"run", "--project", "proj", "mineru-kit", "api-server", "--port", "8080", "--upload-dir", UploadDir(8080), "--tier", "advanced", "--concurrency", "4", "--preload-models"}
 	if len(got) != len(want) {
 		t.Fatalf("len %d != %d: %v", len(got), len(want), got)
 	}
@@ -25,6 +27,16 @@ func TestBuildCommandArgs(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("arg[%d]: got %q want %q", i, got[i], want[i])
 		}
+	}
+}
+
+func TestUploadDirIsUnderTemp(t *testing.T) {
+	dir := UploadDir(18080)
+	if filepath.Dir(dir) != filepath.Clean(os.TempDir()) {
+		t.Fatalf("upload dir %q not under temp %q", dir, os.TempDir())
+	}
+	if !strings.HasSuffix(dir, "mineru-ocr-18080") {
+		t.Fatalf("unexpected upload dir %q", dir)
 	}
 }
 

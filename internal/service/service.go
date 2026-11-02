@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -114,11 +115,16 @@ var getFreePort = FreePort
 var lookPath = exec.LookPath
 var execCommand = exec.Command
 
+func UploadDir(port int) string {
+	return filepath.Join(os.TempDir(), fmt.Sprintf("mineru-ocr-%d", port))
+}
+
 func BuildCommandArgs(opts Options, port int) []string {
 	return []string{
 		"run", "--project", opts.Project,
 		"mineru-kit", "api-server",
 		"--port", strconv.Itoa(port),
+		"--upload-dir", UploadDir(port),
 		"--tier", opts.Tier,
 		"--concurrency", strconv.Itoa(opts.Workers),
 		"--preload-models",
@@ -457,6 +463,18 @@ func (s *supervisor) Start(ctx context.Context) (report.ServiceInfo, error) {
 	}
 	s.port = port
 
+	uploadDir := UploadDir(port)
+	_ = os.RemoveAll(uploadDir)
+	if err := os.MkdirAll(uploadDir, 0o755); err != nil {
+		return report.ServiceInfo{}, fmt.Errorf("create upload dir: %w", err)
+	}
+	started := false
+	defer func() {
+		if !started {
+			_ = os.RemoveAll(uploadDir)
+		}
+	}()
+
 	for attempt := range 2 {
 		if s.opts.LogPath != "" {
 			f, err := os.OpenFile(s.opts.LogPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
@@ -494,6 +512,7 @@ func (s *supervisor) Start(ctx context.Context) (report.ServiceInfo, error) {
 		readyMS, err := waitReady(ctx, port)
 		if err == nil {
 			s.readyMS = readyMS
+			started = true
 			return report.ServiceInfo{Port: port, ReadyMS: readyMS, Stopped: false}, nil
 		}
 		exited := false
@@ -580,6 +599,7 @@ func (s *supervisor) Stop(ctx context.Context) error {
 		s.logFile.Close()
 		s.logFile = nil
 	}
+	_ = os.RemoveAll(UploadDir(s.port))
 	return nil
 }
 

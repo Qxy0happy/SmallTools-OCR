@@ -106,7 +106,8 @@ mineru-ocr <root>... [flags]
 2. 启动：
    ```
    uv run --project <project> mineru-kit api-server \
-     --port <port> --tier <tier> --concurrency <workers> --preload-models
+     --port <port> --upload-dir <temp>/mineru-ocr-<port> \
+     --tier <tier> --concurrency <workers> --preload-models
    ```
    `SysProcAttr{CreationFlags: CREATE_NEW_PROCESS_GROUP}`；stdout/stderr 同时写入 `--service-log`（原样）和 stderr（逐行 `[service] ` 前缀，实时）。
 3. 启动瞬间把 `service{pid, port, started_at}` 写入各根状态文件。
