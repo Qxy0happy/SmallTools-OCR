@@ -6,7 +6,7 @@
 
 ## Notes
 
-- 领域事实来源：`/home/qxyhappy/Projects/MinerU` 源码（Windows 阶段的记录使用旧路径 `D:/Projects/Python/MinerU`）（契约在 `mineru/tasks/`、`mineru/parser/`、`mineru/kit/`）；本机 Go 1.27.3、uv 0.13.6。
+- 领域事实来源：`$HOME/Projects/MinerU` 源码（Windows 阶段的记录使用旧路径 `D:/Projects/Python/MinerU`）（契约在 `mineru/tasks/`、`mineru/parser/`、`mineru/kit/`）；本机 Go 1.27.3、uv 0.13.6。
 - 本仓库无 VCS（无 `.git`/`.jj`）：research 产物写 `.scratch/mineru-ocr/research/`，不走 `research/*` 分支。
 - 本 effort 在 Notes 中覆写「只计划不执行」：交付物就是一份规格，由 ticket 10 写入，随 map 收尾。
 - 已接受风险：
@@ -31,7 +31,7 @@
 - [残留服务识别与清理](issues/11-residual-service-cleanup.md)：pid 存活 + 端口 health 200 + 命令行含 `mineru-kit api-server --port` 三条同时满足才杀，否则只警告。
 - [验收与测试策略](issues/12-acceptance-and-testing.md)：单元 + `httptest` 假服务为默认，真实服务 e2e 走 `-tags=e2e`；验收标准逐条可命令验证。
 - [写出 spec.md](issues/10-write-spec.md)：[`spec.md`](spec.md) 已落地——CLI/退出码/发现/状态 schema/服务编排/HTTP 序列/验收标准/已接受风险。
-- [Linux 进程控制](issues/19-linux-process-control.md)：Windows 实现删除、非 Linux 退出 2；`Setpgid` 进程组 + `SIGTERM`→5s→`SIGKILL`（实测 uv 305ms 退出、python 优雅 shutdown）；pid 存活与残留识别改用 `/proc`；默认项目路径 `/home/qxyhappy/Projects/MinerU`；端口占用判据改 `address already in use`/exit 3。
+- [Linux 进程控制](issues/19-linux-process-control.md)：Windows 实现删除、非 Linux 退出 2；`Setpgid` 进程组 + `SIGTERM`→5s→`SIGKILL`（实测 uv 305ms 退出、python 优雅 shutdown）；pid 存活与残留识别改用 `/proc`；默认项目路径 `$HOME/Projects/MinerU`；端口占用判据改 `address already in use`/exit 3。
 
 ## Not yet specified
 

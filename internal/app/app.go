@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/pflag"
 )
@@ -28,7 +29,7 @@ type Config struct {
 func Defaults() Config {
 	project := os.Getenv("MINERU_PROJECT")
 	if project == "" {
-		project = "/home/qxyhappy/Projects/MinerU"
+		project = defaultProject()
 	}
 	return Config{
 		Workers: 2,
@@ -38,6 +39,16 @@ func Defaults() Config {
 		Out:     os.Stdout,
 		Err:     os.Stderr,
 	}
+}
+
+// defaultProject is $HOME/Projects/MinerU, or the bare relative path when the
+// home directory cannot be resolved.
+func defaultProject() string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return filepath.Join("Projects", "MinerU")
+	}
+	return filepath.Join(home, "Projects", "MinerU")
 }
 
 // Parse fills a Config from args and requires at least one root.

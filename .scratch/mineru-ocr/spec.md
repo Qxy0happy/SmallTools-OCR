@@ -18,7 +18,7 @@ mineru-ocr <root>... [flags]
 |---|---|---|
 | `--workers` | `2` | 客户端并发；同时作为服务端 `--concurrency` |
 | `--tier` | `advanced` | 只影响 PDF；透传给服务端启动参数 |
-| `--mineru-project` | `$MINERU_PROJECT` → `/home/qxyhappy/Projects/MinerU` | `uv run --project` 的目标 |
+| `--mineru-project` | `$MINERU_PROJECT` → `$HOME/Projects/MinerU` | `uv run --project` 的目标 |
 | `--port` | `0` | `0` = 自动挑空闲端口 |
 | `--dry-run` | 关 | 只扫描并打印计划，不启动服务、不写状态 |
 | `--json` | 关 | stdout 输出机器可读报告 |

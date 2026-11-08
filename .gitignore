@@ -1,2 +1,10 @@
+# tool indexes
 .codegraph/
+
+# local build output
 bin/
+
+# runtime artifacts of mineru-ocr
+.mineru-state.json
+.mineru-state.json.bak
+.mineru-service.log

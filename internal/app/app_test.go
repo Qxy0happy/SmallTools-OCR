@@ -2,13 +2,21 @@ package app
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 )
 
 func TestDefaults(t *testing.T) {
 	os.Unsetenv("MINERU_PROJECT")
 	c := Defaults()
-	if c.Workers != 2 || c.Tier != "advanced" || c.Project != "/home/qxyhappy/Projects/MinerU" || c.Port != 0 {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(home, "Projects", "MinerU"); c.Project != want {
+		t.Fatalf("project %q want %q", c.Project, want)
+	}
+	if c.Workers != 2 || c.Tier != "advanced" || c.Port != 0 {
 		t.Fatalf("bad defaults: %+v", c)
 	}
 }

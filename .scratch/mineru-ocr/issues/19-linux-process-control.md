@@ -13,7 +13,7 @@ Blocked by: —
 用户决策（2026-11-08）：
 
 1. **平台范围**：只留 Linux，删掉 `service_windows.go`；非 Linux 仍以退出码 2 拒绝（`service_other.go` 改 `//go:build !linux`）。
-2. **默认项目路径**：`$MINERU_PROJECT` 优先，内置默认 `/home/qxyhappy/Projects/MinerU`。
+2. **默认项目路径**：`$MINERU_PROJECT` 优先，内置默认 `$HOME/Projects/MinerU`。
 3. **关停序列**：`SIGTERM` 发给整个进程组 → 等 5s → `SIGKILL` 发给进程组。
 4. **孤儿兜底**：不加 `Pdeathsig`（Go 里它在“创建子进程的线程”退出时触发，runtime 线程退役可能提前杀掉服务），只靠启动前三判据清理。
 5. **死代码**：顺手删掉 `service.go` 里 15 个无人引用的同义别名变量。
@@ -33,7 +33,7 @@ Blocked by: —
 - 新增 `internal/service/service_linux.go`：`SysProcAttr{Setpgid:true}`、`gracefulStop`（组 `SIGTERM`）、`defaultPidAlive`（`/proc/<pid>/stat` state 非 `Z`/`X`）、`defaultCommandLine`（`/proc/<pid>/cmdline`）、`defaultKill`（确认 `getpgid(pid)==pid` 时 `kill(-pid, SIGKILL)`，否则逐个杀 pid 与子孙，绝不按组盲杀）。
 - `Stop()` 改等 `s.doneCh`：原来的 `os.FindProcess(pid).Wait()` 在 POSIX 上对非子进程立即返回 `wait: no child processes`，会让 5s 宽限形同虚设。
 - `ClassifyExit` 增加 `address already in use` 判据。
-- `app.Defaults()` 默认项目路径改 `/home/qxyhappy/Projects/MinerU`。
+- `app.Defaults()` 默认项目路径改 `$HOME/Projects/MinerU`。
 - `internal/e2e/e2e_test.go` 的残留检查从 powershell/Win32_Process 改为扫 `/proc/*/cmdline`。
 - 删 `service.go` 的别名变量（`BuildCommand`/`buildCommand`/`buildCommandArgs`/`commandArgs`/`startCommand`/`pollReady`/`WaitReadyPoll`/`classifyExit`/`shouldRetry`/`ReadLogTailLines`/`readLogTailString`/`staleMatchFn`/`cleanupCandidate`/`isStale`/`pickPort`/`getFreePort`）与 `PidAlive`/`Health`/`CommandLine`/`KillProcess` 注入层（`CleanupStale` 的 deps 参数已覆盖注入需求）。
 
