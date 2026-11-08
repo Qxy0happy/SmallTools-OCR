@@ -2,43 +2,43 @@ version: "3"
 
 tasks:
   default:
-    desc: Format check, lint and test
+    desc: 格式检查、lint 与测试
     cmds:
       - task: check
 
   fmt:
-    desc: Format Go sources with gofumpt
+    desc: 用 gofumpt 格式化 Go 源码
     cmds:
       - golangci-lint fmt ./...
 
   build:
-    desc: Build ./bin/mineru-ocr
+    desc: 构建 ./bin/mineru-ocr
     cmds:
       - mkdir -p bin
       - go build -trimpath -o bin/mineru-ocr ./cmd/mineru-ocr
 
   fmt:check:
-    desc: Fail without rewriting if any file is not gofumpt-formatted
+    desc: 只检查不改写，存在未格式化文件即失败
     cmds:
       - golangci-lint fmt --diff ./...
 
   lint:
-    desc: Lint with revive
+    desc: 用 revive 做静态检查
     cmds:
       - golangci-lint run ./...
 
   test:
-    desc: Run unit tests
+    desc: 跑单元测试
     cmds:
       - go test ./...
 
   e2e:
-    desc: Run real-service end-to-end tests (needs uv, MinerU project and local models)
+    desc: 跑真实服务端到端测试（需要 uv、MinerU 项目与本地模型）
     cmds:
       - go test -tags=e2e ./internal/e2e -v -timeout 900s
 
   check:
-    desc: Everything CI would run
+    desc: CI 会跑的全部检查
     cmds:
       - task: fmt:check
       - task: lint
