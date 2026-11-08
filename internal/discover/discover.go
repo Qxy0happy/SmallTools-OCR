@@ -17,6 +17,7 @@ var exts = map[string]bool{
 	".pptx": true,
 }
 
+// Find returns the sorted, de-duplicated candidate files under roots.
 func Find(roots []string, warn func(string)) ([]string, error) {
 	if warn == nil {
 		warn = func(string) {}

@@ -18,7 +18,7 @@ Blocked by: 13
    - `func (s *State) Save(root string) error`：整体写 `*.tmp` 后 rename；并发安全（`sync.Mutex` 或调用方串行）。
    - `func (s *State) ShouldSkip(path, hash string) bool`：`status=="completed" && hash 一致 && zip 可打开且含 markdown.md`。
    - `func Fingerprint(path string) (string, int64, error)`：xxh3-128，32 位小写十六进制；返回 size。
-   - `func StatePath(root string) string`：根是目录 → `<root>/.mineru-state.json`；根是文件 → `<dir(file)>/.mineru-state.json`。
+   - `func Path(root string) string`：根是目录 → `<root>/.mineru-state.json`；根是文件 → `<dir(file)>/.mineru-state.json`。
 2. `internal/artifact`：
    - `func ZipPathFor(src string) string` → `<src>.zip`。
    - `func Validate(path string) error`：`zip.OpenReader` 成功、至少一个条目、含 `markdown.md`。

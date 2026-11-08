@@ -8,16 +8,16 @@ import (
 func TestDefaults(t *testing.T) {
 	os.Unsetenv("MINERU_PROJECT")
 	c := Defaults()
-	if c.Workers != 2 || c.Tier != "advanced" || c.Project != "D:/Projects/Python/MinerU" || c.Port != 0 {
+	if c.Workers != 2 || c.Tier != "advanced" || c.Project != "/home/qxyhappy/Projects/MinerU" || c.Port != 0 {
 		t.Fatalf("bad defaults: %+v", c)
 	}
 }
 
 func TestEnvProject(t *testing.T) {
-	os.Setenv("MINERU_PROJECT", "C:/MinerU")
+	os.Setenv("MINERU_PROJECT", "/opt/MinerU")
 	defer os.Unsetenv("MINERU_PROJECT")
 	c := Defaults()
-	if c.Project != "C:/MinerU" {
+	if c.Project != "/opt/MinerU" {
 		t.Fatalf("env not applied: %s", c.Project)
 	}
 }

@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -21,17 +21,29 @@ import (
 	"mineru-ocr/internal/testfixture"
 )
 
-type bytesBuffer = bytes.Buffer
-
+// countMineruProcesses counts live mineru-kit api-server processes by scanning
+// /proc, so it sees uv and its python child alike.
 func countMineruProcesses() (int, error) {
-	cmd := exec.Command("powershell", "-NoProfile", "-Command",
-		`$n=(Get-CimInstance Win32_Process | Where-Object { ($_.Name -eq 'uv.exe' -or $_.Name -eq 'python.exe' -or $_.Name -eq 'python3.exe') -and $_.CommandLine -like '*mineru-kit*' } | Measure-Object).Count; Write-Output $n`)
-	out, err := cmd.Output()
+	entries, err := os.ReadDir("/proc")
 	if err != nil {
 		return 0, err
 	}
-	var n int
-	fmt.Sscanf(strings.TrimSpace(string(out)), "%d", &n)
+	self := os.Getpid()
+	n := 0
+	for _, e := range entries {
+		pid, err := strconv.Atoi(e.Name())
+		if err != nil || pid == self {
+			continue
+		}
+		data, err := os.ReadFile("/proc/" + e.Name() + "/cmdline")
+		if err != nil {
+			continue
+		}
+		cmdline := strings.ReplaceAll(string(data), "\x00", " ")
+		if strings.Contains(cmdline, "mineru-kit") && strings.Contains(cmdline, "api-server") {
+			n++
+		}
+	}
 	return n, nil
 }
 

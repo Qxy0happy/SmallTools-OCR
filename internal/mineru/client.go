@@ -14,11 +14,13 @@ import (
 	"time"
 )
 
+// ErrSourceChanged reports that the file changed between fingerprinting and upload.
 var ErrSourceChanged = errors.New("mineru: source file changed")
 
 // Sleep is the default sleeper used by Retry when no sleeper is injected.
 var Sleep = time.Sleep
 
+// Client talks to a MinerU api-server over its v1 REST API.
 type Client struct {
 	BaseURL string
 	HTTP    *http.Client
@@ -27,6 +29,7 @@ type Client struct {
 	declared   map[string]int64
 }
 
+// Error is an API or transport failure with a stable code and retryability.
 type Error struct {
 	Code      string
 	Message   string
@@ -44,12 +47,14 @@ func (e *Error) Error() string {
 	return fmt.Sprintf("mineru: %s (status %d)", e.Code, e.Status)
 }
 
+// FileDetail is the per-file state reported by a task poll.
 type FileDetail struct {
 	Status    string
 	ResultURL string
 	Error     *Error
 }
 
+// New returns a client bound to baseURL.
 func New(baseURL string) *Client {
 	return &Client{
 		BaseURL:  strings.TrimRight(baseURL, "/"),
@@ -122,6 +127,7 @@ func retryableErr(err error) bool {
 	return true
 }
 
+// Retry runs fn up to three times with 0.25s/0.5s/1s backoff, for retryable errors only.
 func Retry(ctx context.Context, fn func() error, sleep ...func(time.Duration)) error {
 	sleeper := Sleep
 	if len(sleep) > 0 && sleep[0] != nil {
@@ -156,6 +162,7 @@ func Retry(ctx context.Context, fn func() error, sleep ...func(time.Duration)) e
 
 // ---------- Health ----------
 
+// Health probes GET /v1/health with a one second timeout.
 func (c *Client) Health(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
@@ -225,6 +232,7 @@ type createResponse struct {
 	Files  []createRespFile `json:"files"`
 }
 
+// Create submits one file task and returns the task id and upload URL.
 func (c *Client) Create(ctx context.Context, name string, size int64, tier string) (string, string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
@@ -283,6 +291,7 @@ func (c *Client) Create(ctx context.Context, name string, size int64, tier strin
 
 // ---------- Upload ----------
 
+// Upload sends the file body to the upload URL returned by Create.
 func (c *Client) Upload(ctx context.Context, uploadURL, srcPath string) error {
 	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
@@ -348,6 +357,7 @@ type pollResponse struct {
 	Files  []pollFile `json:"files"`
 }
 
+// Poll returns the task status and file detail, 30s timeout per request.
 func (c *Client) Poll(ctx context.Context, taskID string) (string, FileDetail, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
@@ -397,12 +407,13 @@ func (c *Client) Poll(ctx context.Context, taskID string) (string, FileDetail, e
 
 // ---------- Download ----------
 
+// Download streams the result zip into partPath, following at most five redirects.
 func (c *Client) Download(ctx context.Context, resultURL, partPath string) error {
 	ctx, cancel := context.WithTimeout(ctx, 300*time.Second)
 	defer cancel()
 
 	client := *c.httpClient()
-	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+	client.CheckRedirect = func(_ *http.Request, via []*http.Request) error {
 		if len(via) >= 5 {
 			return errors.New("too many redirects")
 		}
@@ -441,6 +452,7 @@ func (c *Client) Download(ctx context.Context, resultURL, partPath string) error
 
 // ---------- Cancel ----------
 
+// Cancel asks the server to cancel taskID, with a 5s timeout.
 func (c *Client) Cancel(ctx context.Context, taskID string) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()

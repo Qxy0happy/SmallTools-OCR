@@ -139,7 +139,7 @@ func TestClientUploadSourceChanged(t *testing.T) {
 	dir := t.TempDir()
 	src := filepath.Join(dir, "src.bin")
 	os.WriteFile(src, []byte("hello"), 0o644)
-	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"task_id": "t",
@@ -160,7 +160,7 @@ func TestClientUploadSourceChanged(t *testing.T) {
 
 func TestClientPollRunningToCompleted(t *testing.T) {
 	calls := 0
-	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		calls++
 		w.Header().Set("Content-Type", "application/json")
 		if calls == 1 {
@@ -190,7 +190,7 @@ func TestClientPollRunningToCompleted(t *testing.T) {
 }
 
 func TestClientPollFailedExposesErrorCode(t *testing.T) {
-	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"status": "failed",
@@ -212,7 +212,7 @@ func TestClientPollFailedExposesErrorCode(t *testing.T) {
 
 func TestClientRetry500ThenSuccess(t *testing.T) {
 	calls := 0
-	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		calls++
 		if calls < 3 {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -237,7 +237,7 @@ func TestClientRetry500ThenSuccess(t *testing.T) {
 
 func TestClientNoRetryOn400(t *testing.T) {
 	calls := 0
-	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		calls++
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(`{"error":{"code":"bad","message":"nope"}}`))
@@ -260,7 +260,7 @@ func TestClientNoRetryOn400(t *testing.T) {
 // removed
 
 func TestClientDownloadWritesTempFile(t *testing.T) {
-	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Write([]byte("payload-bytes"))
 	})
 	c, _ := newClient(t, h)
@@ -299,7 +299,7 @@ func TestClientDownloadRedirect(t *testing.T) {
 }
 
 func TestClientHealthNon200Error(t *testing.T) {
-	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	})
 	c, _ := newClient(t, h)
@@ -309,7 +309,7 @@ func TestClientHealthNon200Error(t *testing.T) {
 }
 
 func TestClientHealthOK(t *testing.T) {
-	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 	c, _ := newClient(t, h)

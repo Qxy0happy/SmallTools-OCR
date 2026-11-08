@@ -101,11 +101,11 @@ func TestShouldSkip(t *testing.T) {
 	}
 }
 
-func TestStatePathFileRoot(t *testing.T) {
+func TestPathFileRoot(t *testing.T) {
 	dir := t.TempDir()
 	f := filepath.Join(dir, "x.pdf")
 	os.WriteFile(f, []byte("x"), 0o644)
-	p := StatePath(f)
+	p := Path(f)
 	if p != filepath.Join(dir, ".mineru-state.json") {
 		t.Fatalf("got %s", p)
 	}

@@ -8,10 +8,12 @@ import (
 	"path/filepath"
 )
 
+// ZipPathFor returns the artifact zip path that sits next to src.
 func ZipPathFor(src string) string {
 	return src + ".zip"
 }
 
+// Validate reports whether path is a readable zip containing markdown.md.
 func Validate(path string) error {
 	r, err := zip.OpenReader(path)
 	if err != nil {
@@ -29,6 +31,7 @@ func Validate(path string) error {
 	return fmt.Errorf("artifact: missing markdown.md")
 }
 
+// Write moves partPath onto destPath, falling back to a copy across filesystems.
 func Write(partPath, destPath string) error {
 	if err := os.Rename(partPath, destPath); err == nil {
 		return nil

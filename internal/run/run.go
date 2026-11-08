@@ -20,12 +20,14 @@ import (
 	"mineru-ocr/internal/state"
 )
 
+// Deps overrides the run's collaborators; nil fields use the real implementations.
 type Deps struct {
 	NewClient     func(baseURL string) *mineru.Client
 	NewSupervisor func(opts service.Options) service.Supervisor
 	CleanupStale  func(records []service.Record) error
 }
 
+// Run executes one pass over cfg.Roots and returns the process exit code.
 func Run(ctx context.Context, cfg app.Config, deps ...Deps) int {
 	var d Deps
 	if len(deps) > 0 {

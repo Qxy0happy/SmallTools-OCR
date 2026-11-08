@@ -18,7 +18,7 @@ mineru-ocr <root>... [flags]
 |---|---|---|
 | `--workers` | `2` | 客户端并发；同时作为服务端 `--concurrency` |
 | `--tier` | `advanced` | 只影响 PDF；透传给服务端启动参数 |
-| `--mineru-project` | `$MINERU_PROJECT` → `D:/Projects/Python/MinerU` | `uv run --project` 的目标 |
+| `--mineru-project` | `$MINERU_PROJECT` → `/home/qxyhappy/Projects/MinerU` | `uv run --project` 的目标 |
 | `--port` | `0` | `0` = 自动挑空闲端口 |
 | `--dry-run` | 关 | 只扫描并打印计划，不启动服务、不写状态 |
 | `--json` | 关 | stdout 输出机器可读报告 |
@@ -49,13 +49,13 @@ mineru-ocr <root>... [flags]
 ```json
 {
   "schema_version": 1,
-  "roots": ["D:/docs"],
+  "roots": ["/home/user/docs"],
   "scanned": 12, "skipped": 3, "completed": 8, "failed": 1,
   "exit_code": 1,
   "service": {"port": 54321, "ready_ms": 28010, "stopped": true},
   "files": [
-    {"path": "D:/docs/a.pdf", "status": "completed", "zip_path": "D:/docs/a.pdf.zip", "duration_ms": 12340},
-    {"path": "D:/docs/b.docx", "status": "failed", "error": {"code": "parse_failed", "message": "..."}}
+    {"path": "/home/user/docs/a.pdf", "status": "completed", "zip_path": "/home/user/docs/a.pdf.zip", "duration_ms": 12340},
+    {"path": "/home/user/docs/b.docx", "status": "failed", "error": {"code": "parse_failed", "message": "..."}}
   ]
 }
 ```
@@ -77,9 +77,9 @@ mineru-ocr <root>... [flags]
   "schema_version": 1,
   "tool_version": "0.1.0",
   "files": {
-    "D:/docs/a.pdf": {
+    "/home/user/docs/a.pdf": {
       "size": 123456, "hash": "<32 hex>", "tier": "advanced",
-      "zip_path": "D:/docs/a.pdf.zip", "status": "completed",
+      "zip_path": "/home/user/docs/a.pdf.zip", "status": "completed",
       "error": null, "duration_ms": 12340, "updated_at": "2026-11-02T20:00:00Z"
     }
   },
@@ -97,7 +97,7 @@ mineru-ocr <root>... [flags]
 
 ### 6.1 启动前清理残留
 
-对每个根的 `service` 记录，**三条同时满足**才认定为自家残留：pid 存活、记录端口 `GET /v1/health` 返回 200、该 pid 的 `Win32_Process.CommandLine` 含 `mineru-kit`、`api-server` 与 `--port <记录端口>`。命中则按 6.4 关停；任一不满足则 stderr 警告，不杀。
+对每个根的 `service` 记录，**三条同时满足**才认定为自家残留：pid 存活（`/proc/<pid>/stat` 的 state 不是 `Z`/`X`）、记录端口 `GET /v1/health` 返回 200、`/proc/<pid>/cmdline`（NUL 换成空格）含 `mineru-kit`、`api-server` 与 `--port <记录端口>`。命中则按 6.4 关停；任一不满足则 stderr 警告，不杀。读不到 cmdline（`/proc` 不可用）按“不杀 + 警告”处理。
 
 ### 6.2 端口与启动
 
@@ -109,21 +109,21 @@ mineru-ocr <root>... [flags]
      --port <port> --upload-dir <temp>/mineru-ocr-<port> \
      --tier <tier> --concurrency <workers> --preload-models
    ```
-   `SysProcAttr{CreationFlags: CREATE_NEW_PROCESS_GROUP}`；stdout/stderr 同时写入 `--service-log`（原样）和 stderr（逐行 `[service] ` 前缀，实时）。
+   `SysProcAttr{Setpgid: true}`（uv 成为进程组组长，python 子进程继承同组）；stdout/stderr 同时写入 `--service-log`（原样）和 stderr（逐行 `[service] ` 前缀，实时）。
 3. 启动瞬间把 `service{pid, port, started_at}` 写入各根状态文件。
 
 ### 6.3 就绪与存活
 
 - 就绪：每 250ms `GET /v1/health`（单次 1s 超时），200 即就绪；**连接被拒也算未就绪**，不要等 503。
 - 就绪超时 **120s**（preload 实测 28.01s）；期间进程退出 → 读日志尾部：
-  - 退出码 `3` 或含 `WinError 10048` → 换新端口重试**一次**；仍失败 → 退出 2。
+  - 退出码 `3` 或日志含 `address already in use`（`[Errno 98]`）→ 换新端口重试**一次**；仍失败 → 退出 2。
   - 退出码 `1` 且含 `Unsupported tier` → 直接退出 2（`--tier` 传给服务端的值必须合法）。
   - 其他 → stderr 提示 `uv run --project <project> mineru-kit models download`，退出 2。
 - 存活：运行中每 5s 探 `GET /v1/health`；连续 3 次失败或进程退出 → 停止派发，等在飞任务 ≤30s，汇总后退出 2。
 
 ### 6.4 关停
 
-`GenerateConsoleCtrlEvent(CTRL_BREAK_EVENT, uv_pid)` → 等 5s → 未退则 `taskkill /T /F /PID <uv_pid>`；随后确认端口不再可连（≤5s）。正常结束、错误结束、Ctrl+C 都走同一序列。
+对进程组发 `SIGTERM`（`kill(-uv_pid)`）→ 等 5s（等 `cmd.Wait` 的 reaper 返回，不用 `os.FindProcess().Wait()`，POSIX 上非子进程无法 wait）→ 未退则对进程组发 `SIGKILL`，再等 ≤2s；随后确认端口不再可连（≤5s）。正常结束、错误结束、Ctrl+C 都走同一序列。宿主被 SIGKILL 时 uv/python 会成孤儿，靠 6.1 下次启动清理。
 
 ## 7. 每文件处理
 
@@ -150,7 +150,7 @@ worker 池大小 = `--workers`；每 worker 同一时刻推进一个文件；服
 
 ## 9. 实现约束
 
-- Go 1.27+，Windows 目标；非 Windows 直接退出 2（本规格只覆盖 Windows 进程控制）。
+- Go 1.27+，Linux 目标；非 Linux 直接退出 2（本规格只覆盖 Linux 进程控制）。
 - 依赖仅：`github.com/zeebo/xxh3`、`github.com/spf13/pflag`。
 - Python 环境全部由 uv 管理与运行：子进程固定为 `uv run --project <project> mineru-kit ...`，代码中不出现裸 `python`/`pip` 调用。
 - 建议包结构：`cmd/mineru-ocr`、`internal/discover`、`internal/state`、`internal/mineru`（HTTP 客户端）、`internal/service`（进程监管）、`internal/run`（编排）、`internal/report`。
@@ -166,10 +166,12 @@ worker 池大小 = `--workers`；每 worker 同一时刻推进一个文件；服
 - PATH 中没有 `uv`：退出 2，提示安装 uv，且不启动任何服务。
 - 运行中 Ctrl+C：在飞任务取消、服务退出、端口释放、无 `uv`/`python` 残留、退出 130。
 - 启动期间 stderr 实时出现 `[service]` 前缀日志（可见 `Initializing VLM client`、`Application startup complete.`、`Uvicorn running on http://127.0.0.1:<port>`），且与 `--service-log` 文件内容一致；`--no-service-log-stream` 时 stderr 无 `[service]` 行而文件仍有内容。
-- 手工制造残留（`taskkill /F` 杀宿主）后重跑：按 §6.1 清理旧实例并正常完成。
+- 手工制造残留（`kill -9` 杀宿主）后重跑：按 §6.1 清理旧实例并正常完成。
+- 运行中 Ctrl+C：`SIGTERM` 后 ≤5s 内 uv 与 python 退出（实测 305ms），端口释放，`/proc` 中无 `mineru-kit api-server` 残留。
 
 ## 11. 已接受风险
 
 - `--tier advanced` 由本程序保证；若服务端拒绝，逐文件 400 原样上报，不降级。
 - 自动端口 `bind→close→传参` 有极小竞态，靠“启动失败换端口重试一次”兜底。
-- 残留识别依赖命令行匹配；`Win32_Process.CommandLine` 取不到时按“不杀 + 警告”处理。
+- 残留识别依赖命令行匹配；`/proc/<pid>/cmdline` 取不到时按“不杀 + 警告”处理。
+- 强杀只在确认 pid 是进程组组长（`getpgid(pid) == pid`）时用 `kill(-pid)`，否则退化为逐个杀掉 pid 与其子孙，避免误杀同组的无关进程。

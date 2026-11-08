@@ -14,13 +14,16 @@ import (
 	"github.com/zeebo/xxh3"
 )
 
+// ErrCorrupt reports that a state file was unreadable and got backed up.
 var ErrCorrupt = errors.New("state: corrupt")
 
+// Error is the persisted failure of one file.
 type Error struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
 }
 
+// FileRecord is the persisted outcome for one source file.
 type FileRecord struct {
 	Size       int64     `json:"size"`
 	Hash       string    `json:"hash"`
@@ -32,12 +35,14 @@ type FileRecord struct {
 	UpdatedAt  time.Time `json:"updated_at"`
 }
 
+// ServiceRecord is the service instance this tool started for the root.
 type ServiceRecord struct {
 	PID       int       `json:"pid"`
 	Port      int       `json:"port"`
 	StartedAt time.Time `json:"started_at"`
 }
 
+// State is one root's state file contents.
 type State struct {
 	SchemaVersion int                   `json:"schema_version"`
 	ToolVersion   string                `json:"tool_version"`
@@ -46,7 +51,8 @@ type State struct {
 	mu            sync.Mutex            `json:"-"`
 }
 
-func StatePath(root string) string {
+// Path returns the state file path for root, a directory or a file.
+func Path(root string) string {
 	info, err := os.Stat(root)
 	if err == nil && info.IsDir() {
 		return filepath.Join(root, ".mineru-state.json")
@@ -62,8 +68,9 @@ func emptyState() *State {
 	}
 }
 
+// Load reads the state file for root, backing up and resetting a corrupt one.
 func Load(root string) (*State, error) {
-	p := StatePath(root)
+	p := Path(root)
 	data, err := os.ReadFile(p)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -88,13 +95,14 @@ func Load(root string) (*State, error) {
 	return &s, nil
 }
 
+// Save atomically rewrites the state file for root.
 func (s *State) Save(root string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.Files == nil {
 		s.Files = map[string]FileRecord{}
 	}
-	p := StatePath(root)
+	p := Path(root)
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 		return err
 	}
@@ -109,6 +117,7 @@ func (s *State) Save(root string) error {
 	return os.Rename(tmp, p)
 }
 
+// ShouldSkip reports whether path is completed, unchanged and has a valid zip.
 func (s *State) ShouldSkip(path, hash string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -128,6 +137,7 @@ func (s *State) ShouldSkip(path, hash string) bool {
 	return artifact.Validate(rec.ZipPath) == nil
 }
 
+// Fingerprint hashes path with xxh3-128, returning the hash and size.
 func Fingerprint(path string) (string, int64, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

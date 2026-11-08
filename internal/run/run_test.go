@@ -120,11 +120,11 @@ type fakeSup struct {
 	stopCalled bool
 }
 
-func (s *fakeSup) Start(ctx context.Context) (report.ServiceInfo, error) {
+func (s *fakeSup) Start(_ context.Context) (report.ServiceInfo, error) {
 	return report.ServiceInfo{Port: s.port, ReadyMS: 1}, nil
 }
-func (s *fakeSup) Health(ctx context.Context) error { return s.healthErr }
-func (s *fakeSup) Stop(ctx context.Context) error {
+func (s *fakeSup) Health(_ context.Context) error { return s.healthErr }
+func (s *fakeSup) Stop(_ context.Context) error {
 	s.mu.Lock()
 	s.stopCalled = true
 	s.mu.Unlock()
@@ -150,7 +150,7 @@ func newCfg(dir string, jsonMode bool) (app.Config, *bytes.Buffer, *bytes.Buffer
 	return cfg, out, errb
 }
 
-func runCase(t *testing.T, dir string, names []string, cfg app.Config, srv *httptest.Server, ft *fakeTasks, healthErr error) (int, *bytes.Buffer, *bytes.Buffer, *fakeSup) {
+func runCase(t *testing.T, dir string, names []string, cfg app.Config, srv *httptest.Server, _ *fakeTasks, healthErr error) (int, *bytes.Buffer, *bytes.Buffer, *fakeSup) {
 	t.Helper()
 	makeFiles(t, dir, names)
 	port := srv.Listener.Addr().(*net.TCPAddr).Port
@@ -158,7 +158,7 @@ func runCase(t *testing.T, dir string, names []string, cfg app.Config, srv *http
 	cfg.Roots = []string{dir}
 	deps := Deps{
 		NewClient:     func(baseURL string) *mineru.Client { return mineru.New(baseURL) },
-		NewSupervisor: func(opts service.Options) service.Supervisor { return sup },
+		NewSupervisor: func(_ service.Options) service.Supervisor { return sup },
 	}
 	code := Run(context.Background(), cfg, deps)
 	return code, cfg.Out.(*bytes.Buffer), cfg.Err.(*bytes.Buffer), sup
@@ -315,7 +315,7 @@ func TestRunCancelCallsCancelAndStop(t *testing.T) {
 	_ = errb
 	deps := Deps{
 		NewClient:     func(baseURL string) *mineru.Client { return mineru.New(baseURL) },
-		NewSupervisor: func(opts service.Options) service.Supervisor { return sup },
+		NewSupervisor: func(_ service.Options) service.Supervisor { return sup },
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -396,7 +396,7 @@ func TestRunCleansStaleServiceRecord(t *testing.T) {
 	sup := &fakeSup{port: srv.Listener.Addr().(*net.TCPAddr).Port}
 	deps := Deps{
 		NewClient:     func(baseURL string) *mineru.Client { return mineru.New(baseURL) },
-		NewSupervisor: func(opts service.Options) service.Supervisor { return sup },
+		NewSupervisor: func(_ service.Options) service.Supervisor { return sup },
 		CleanupStale: func(records []service.Record) error {
 			cleaned = append(cleaned, records...)
 			return nil

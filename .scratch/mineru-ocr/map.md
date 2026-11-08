@@ -6,7 +6,7 @@
 
 ## Notes
 
-- 领域事实来源：`D:/Projects/Python/MinerU` 源码（契约在 `mineru/tasks/`、`mineru/parser/`、`mineru/kit/`）；本机 Go 1.27.3、uv 0.13.6。
+- 领域事实来源：`/home/qxyhappy/Projects/MinerU` 源码（Windows 阶段的记录使用旧路径 `D:/Projects/Python/MinerU`）（契约在 `mineru/tasks/`、`mineru/parser/`、`mineru/kit/`）；本机 Go 1.27.3、uv 0.13.6。
 - 本仓库无 VCS（无 `.git`/`.jj`）：research 产物写 `.scratch/mineru-ocr/research/`，不走 `research/*` 分支。
 - 本 effort 在 Notes 中覆写「只计划不执行」：交付物就是一份规格，由 ticket 10 写入，随 map 收尾。
 - 已接受风险：
@@ -27,10 +27,11 @@
 - [状态文件与增量](issues/06-state-and-resume.md)：根下 `.mineru-state.json`；xxh3-128 全量指纹；仅终态；原子整体重写；损坏则备份重来；网络类错误 3 次退避重试。
 - [CLI 表面与错误语义](issues/09-cli-surface-and-errors.md)：单命令 + flags；flag > env > 默认；退出码 0/1/2/130；进度 stderr、汇总/`--json` stdout；服务端日志实时透传 stderr（`[service]` 前缀）并落文件。
 - [服务启动、就绪与失败形状](issues/07-service-lifecycle.md)：环境已 sync 时 uv 不联网；冷 15.36s / 热 11.92s / preload 28.01s 就绪；就绪前端口拒连（无 503）；端口占用退出码 3、非法 tier 退出码 1；`--tier advanced` 发布四档。
-- [Windows 上启停 uv 进程树](issues/08-windows-process-control.md)：`CTRL_BREAK_EVENT` 可优雅停下 uv→python（0.5s 内、无残留）；`taskkill /T /F` 0.28s 强杀；宿主被强杀会留孤儿。
+- [Windows 上启停 uv 进程树](issues/08-windows-process-control.md)（已被 ticket 19 取代，保留作历史证据）：`CTRL_BREAK_EVENT` 可优雅停下 uv→python（0.5s 内、无残留）；`taskkill /T /F` 0.28s 强杀；宿主被强杀会留孤儿。
 - [残留服务识别与清理](issues/11-residual-service-cleanup.md)：pid 存活 + 端口 health 200 + 命令行含 `mineru-kit api-server --port` 三条同时满足才杀，否则只警告。
 - [验收与测试策略](issues/12-acceptance-and-testing.md)：单元 + `httptest` 假服务为默认，真实服务 e2e 走 `-tags=e2e`；验收标准逐条可命令验证。
 - [写出 spec.md](issues/10-write-spec.md)：[`spec.md`](spec.md) 已落地——CLI/退出码/发现/状态 schema/服务编排/HTTP 序列/验收标准/已接受风险。
+- [Linux 进程控制](issues/19-linux-process-control.md)：Windows 实现删除、非 Linux 退出 2；`Setpgid` 进程组 + `SIGTERM`→5s→`SIGKILL`（实测 uv 305ms 退出、python 优雅 shutdown）；pid 存活与残留识别改用 `/proc`；默认项目路径 `/home/qxyhappy/Projects/MinerU`；端口占用判据改 `address already in use`/exit 3。
 
 ## Not yet specified
 

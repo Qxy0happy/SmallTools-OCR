@@ -19,10 +19,12 @@ import (
 	"mineru-ocr/internal/report"
 )
 
+// ErrUnsupportedPlatform is returned where process control is not implemented.
 var ErrUnsupportedPlatform = errors.New("service: unsupported platform")
 
 var platformSupported = true
 
+// Options configures the supervised service process.
 type Options struct {
 	Project   string
 	Tier      string
@@ -32,17 +34,20 @@ type Options struct {
 	LogStream io.Writer
 }
 
+// Record is a service instance recorded in a root's state file.
 type Record struct {
 	PID  int
 	Port int
 }
 
+// Supervisor starts, probes and stops the MinerU service.
 type Supervisor interface {
 	Start(ctx context.Context) (report.ServiceInfo, error)
 	Health(ctx context.Context) error
 	Stop(ctx context.Context) error
 }
 
+// CleanupDeps overrides the probes used by CleanupStale; nil fields use platform defaults.
 type CleanupDeps struct {
 	PidAlive    func(int) bool
 	Health      func(int) bool
@@ -50,6 +55,7 @@ type CleanupDeps struct {
 	Kill        func(int) error
 }
 
+// LineWriter prefixes every complete line written to W.
 type LineWriter struct {
 	Prefix string
 	W      io.Writer
@@ -57,14 +63,9 @@ type LineWriter struct {
 	buf    []byte
 }
 
-type lineWriter = LineWriter
-
+// NewLineWriter returns a writer that prefixes each line for w.
 func NewLineWriter(prefix string, w io.Writer) *LineWriter {
 	return &LineWriter{Prefix: prefix, W: w}
-}
-
-func newLineWriter(prefix string, w io.Writer) *LineWriter {
-	return NewLineWriter(prefix, w)
 }
 
 func (lw *LineWriter) Write(p []byte) (int, error) {
@@ -96,6 +97,7 @@ func (lw *LineWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+// FreePort reserves and releases a 127.0.0.1 port, returning its number.
 func FreePort() (int, error) {
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -109,16 +111,17 @@ func FreePort() (int, error) {
 	return addr.Port, nil
 }
 
-var freePort = FreePort
-var pickPort = FreePort
-var getFreePort = FreePort
-var lookPath = exec.LookPath
-var execCommand = exec.Command
+var (
+	lookPath    = exec.LookPath
+	execCommand = exec.Command
+)
 
+// UploadDir is the service upload directory for the given port.
 func UploadDir(port int) string {
 	return filepath.Join(os.TempDir(), fmt.Sprintf("mineru-ocr-%d", port))
 }
 
+// BuildCommandArgs returns the uv run arguments that start the service on port.
 func BuildCommandArgs(opts Options, port int) []string {
 	return []string{
 		"run", "--project", opts.Project,
@@ -131,16 +134,11 @@ func BuildCommandArgs(opts Options, port int) []string {
 	}
 }
 
-var BuildCommand = BuildCommandArgs
-var buildCommand = BuildCommandArgs
-var buildCommandArgs = BuildCommandArgs
-var commandArgs = BuildCommandArgs
-var startCommand = BuildCommandArgs
-
 func healthURL(port int) string {
 	return fmt.Sprintf("http://127.0.0.1:%d/v1/health", port)
 }
 
+// CheckHealth calls GET /v1/health with a one second timeout.
 func CheckHealth(ctx context.Context, port int) error {
 	cctx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
@@ -159,10 +157,12 @@ func CheckHealth(ctx context.Context, port int) error {
 	return nil
 }
 
+// WaitReady polls until ready or 120s elapse, returning the ready time in ms.
 func WaitReady(ctx context.Context, port int) (int64, error) {
 	return WaitReadyTimeout(ctx, port, 120*time.Second)
 }
 
+// WaitReadyTimeout is WaitReady with an explicit readiness timeout.
 func WaitReadyTimeout(ctx context.Context, port int, timeout time.Duration) (int64, error) {
 	start := time.Now()
 	deadline := start.Add(timeout)
@@ -184,15 +184,14 @@ func WaitReadyTimeout(ctx context.Context, port int, timeout time.Duration) (int
 }
 
 var waitReady = WaitReady
-var pollReady = WaitReady
-var WaitReadyPoll = WaitReady
 
+// ClassifyExit maps a startup failure to a retry decision or a fatal error.
 func ClassifyExit(code int, tail string, project ...string) (bool, error) {
 	proj := "<project>"
 	if len(project) > 0 && project[0] != "" {
 		proj = project[0]
 	}
-	if code == 3 || strings.Contains(tail, "WinError 10048") {
+	if code == 3 || strings.Contains(tail, "address already in use") || strings.Contains(tail, "WinError 10048") {
 		return true, fmt.Errorf("port in use")
 	}
 	if code == 1 && strings.Contains(tail, "Unsupported tier") {
@@ -205,12 +204,7 @@ func ClassifyExit(code int, tail string, project ...string) (bool, error) {
 	return false, fmt.Errorf("service failed to start; run `uv run --project %s mineru-kit models download`: %s", proj, msg)
 }
 
-var classifyExit = ClassifyExit
-var shouldRetry = func(code int, tail string) bool {
-	ok, _ := ClassifyExit(code, tail)
-	return ok
-}
-
+// ReadLogTail returns the last n lines of the service log at path.
 func ReadLogTail(path string, n int) []string {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -228,48 +222,16 @@ func readLogTail(path string, n int) string {
 	return strings.Join(lines, "\n")
 }
 
-var ReadLogTailLines = ReadLogTail
-var readLogTailString = readLogTail
-
-var PidAlive func(int) bool
-var Health func(int) bool
-var CommandLine func(int) (string, error)
-var KillProcess func(int) error
-
-var pidAlive func(int) bool = func(pid int) bool {
-	if PidAlive != nil {
-		return PidAlive(pid)
-	}
-	return defaultPidAlive(pid)
-}
-var health func(int) bool = func(port int) bool {
-	if Health != nil {
-		return Health(port)
-	}
-	return defaultHealth(port)
-}
-var commandLine func(int) (string, error) = func(pid int) (string, error) {
-	if CommandLine != nil {
-		return CommandLine(pid)
-	}
-	return defaultCommandLine(pid)
-}
-var killProcess func(int) error = func(pid int) error {
-	if KillProcess != nil {
-		return KillProcess(pid)
-	}
-	return defaultKill(pid)
-}
-
+// StaleMatch reports whether rec is a leftover service started by this tool.
 func StaleMatch(rec Record, alive func(int) bool, hlth func(int) bool, cmd func(int) (string, error)) bool {
 	if alive == nil {
-		alive = pidAlive
+		alive = defaultPidAlive
 	}
 	if hlth == nil {
-		hlth = health
+		hlth = defaultHealth
 	}
 	if cmd == nil {
-		cmd = commandLine
+		cmd = defaultCommandLine
 	}
 	if !alive(rec.PID) {
 		return false
@@ -293,10 +255,7 @@ func StaleMatch(rec Record, alive func(int) bool, hlth func(int) bool, cmd func(
 	return true
 }
 
-var staleMatchFn = StaleMatch
-var cleanupCandidate = StaleMatch
-var isStale = StaleMatch
-
+// CleanupStale kills the leftovers among records that match all three stale criteria.
 func CleanupStale(records []Record, deps ...any) error {
 	if !platformSupported {
 		return ErrUnsupportedPlatform
@@ -311,19 +270,19 @@ func CleanupStale(records []Record, deps ...any) error {
 		seen[rec.PID] = true
 		aliveFn := d.PidAlive
 		if aliveFn == nil {
-			aliveFn = pidAlive
+			aliveFn = defaultPidAlive
 		}
 		healthFn := d.Health
 		if healthFn == nil {
-			healthFn = health
+			healthFn = defaultHealth
 		}
 		cmdFn := d.CommandLine
 		if cmdFn == nil {
-			cmdFn = commandLine
+			cmdFn = defaultCommandLine
 		}
 		killFn := d.Kill
 		if killFn == nil {
-			killFn = killProcess
+			killFn = defaultKill
 		}
 		hlthBool := func(port int) bool { return healthFn(port) }
 		match := StaleMatch(rec, aliveFn, hlthBool, cmdFn)
@@ -413,18 +372,25 @@ func resolveCleanupDeps(deps []any) CleanupDeps {
 	return out
 }
 
-var defaultPidAlive = func(pid int) bool { return false }
-var defaultHealth = func(port int) bool { return false }
-var defaultCommandLine = func(pid int) (string, error) { return "", nil }
-var defaultKill = func(pid int) error { return nil }
+var (
+	defaultPidAlive    = func(_ int) bool { return false }
+	defaultHealth      = func(_ int) bool { return false }
+	defaultCommandLine = func(_ int) (string, error) { return "", nil }
+	defaultKill        = func(_ int) error { return nil }
+)
 
 type unsupportedSupervisor struct{ opts Options }
 
-func (unsupportedSupervisor) Start(ctx context.Context) (report.ServiceInfo, error) {
+// Start always fails: the platform has no process control support.
+func (unsupportedSupervisor) Start(_ context.Context) (report.ServiceInfo, error) {
 	return report.ServiceInfo{}, ErrUnsupportedPlatform
 }
-func (unsupportedSupervisor) Health(ctx context.Context) error { return ErrUnsupportedPlatform }
-func (unsupportedSupervisor) Stop(ctx context.Context) error   { return ErrUnsupportedPlatform }
+
+// Health always fails: the platform has no process control support.
+func (unsupportedSupervisor) Health(_ context.Context) error { return ErrUnsupportedPlatform }
+
+// Stop always fails: the platform has no process control support.
+func (unsupportedSupervisor) Stop(_ context.Context) error { return ErrUnsupportedPlatform }
 
 type supervisor struct {
 	opts           Options
@@ -438,24 +404,22 @@ type supervisor struct {
 	lost           bool
 }
 
+// New returns the platform supervisor, or a stub reporting ErrUnsupportedPlatform.
 func New(opts Options) Supervisor {
 	if !platformSupported {
 		return unsupportedSupervisor{opts: opts}
 	}
-	return newSupervisor(opts)
-}
-
-func newSupervisor(opts Options) Supervisor {
 	return &supervisor{opts: opts}
 }
 
+// Start launches the service, waits for readiness and retries once on a port clash.
 func (s *supervisor) Start(ctx context.Context) (report.ServiceInfo, error) {
 	if _, err := lookPath("uv"); err != nil {
 		return report.ServiceInfo{}, fmt.Errorf("uv not found; install uv (https://docs.astral.sh/uv/): %w", err)
 	}
 	port := s.opts.Port
 	if port == 0 {
-		p, err := freePort()
+		p, err := FreePort()
 		if err != nil {
 			return report.ServiceInfo{}, err
 		}
@@ -477,7 +441,7 @@ func (s *supervisor) Start(ctx context.Context) (report.ServiceInfo, error) {
 
 	for attempt := range 2 {
 		if s.opts.LogPath != "" {
-			f, err := os.OpenFile(s.opts.LogPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+			f, err := os.OpenFile(s.opts.LogPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 			if err == nil {
 				s.logFile = f
 			}
@@ -500,7 +464,7 @@ func (s *supervisor) Start(ctx context.Context) (report.ServiceInfo, error) {
 			cmd.Stdout = w
 			cmd.Stderr = w
 		}
-		cmd.SysProcAttr = sysProcAttr().(*syscall.SysProcAttr)
+		cmd.SysProcAttr = sysProcAttr()
 		if err := cmd.Start(); err != nil {
 			return report.ServiceInfo{}, err
 		}
@@ -527,7 +491,7 @@ func (s *supervisor) Start(ctx context.Context) (report.ServiceInfo, error) {
 			}
 		case <-time.After(100 * time.Millisecond):
 		}
-		_ = killProcess(s.uvPID)
+		_ = defaultKill(s.uvPID)
 		if s.logFile != nil {
 			s.logFile.Close()
 			s.logFile = nil
@@ -538,7 +502,7 @@ func (s *supervisor) Start(ctx context.Context) (report.ServiceInfo, error) {
 			retry, classErr := ClassifyExit(exitCode, tail, s.opts.Project)
 			if retry && attempt == 0 {
 				if s.opts.Port == 0 {
-					np, err := freePort()
+					np, err := FreePort()
 					if err == nil {
 						port = np
 						s.port = port
@@ -558,6 +522,7 @@ func (s *supervisor) Start(ctx context.Context) (report.ServiceInfo, error) {
 	return report.ServiceInfo{}, fmt.Errorf("service failed to start")
 }
 
+// Health probes the service and marks it lost after three consecutive failures.
 func (s *supervisor) Health(ctx context.Context) error {
 	err := CheckHealth(ctx, s.port)
 	if err == nil {
@@ -571,20 +536,34 @@ func (s *supervisor) Health(ctx context.Context) error {
 	return err
 }
 
+// Lost reports whether the liveness monitor gave up on the service.
 func (s *supervisor) Lost() bool { return s.lost }
 
-func (s *supervisor) Stop(ctx context.Context) error {
+// Stop terminates the service process group, escalating to SIGKILL after 5s.
+func (s *supervisor) Stop(_ context.Context) error {
 	if s.uvPID != 0 {
-		_ = ctrlBreak(s.uvPID)
-		p, _ := os.FindProcess(s.uvPID)
-		done := make(chan error, 1)
-		go func() { _, err := p.Wait(); done <- err }()
-		select {
-		case <-done:
-		case <-time.After(5 * time.Second):
-			_ = killProcess(s.uvPID)
+		// The child runs in its own process group (sysProcAttr sets Setpgid), so
+		// signalling the group reaches uv's python child even if uv stops
+		// forwarding signals. Wait on doneCh: cmd.Wait is already reaping the
+		// process, and on POSIX only the parent may wait for it.
+		_ = gracefulStop(s.uvPID)
+		exited := false
+		if s.doneCh != nil {
+			select {
+			case <-s.doneCh:
+				exited = true
+			case <-time.After(5 * time.Second):
+			}
 		}
-		_ = killProcess(s.uvPID)
+		if !exited {
+			_ = defaultKill(s.uvPID)
+			if s.doneCh != nil {
+				select {
+				case <-s.doneCh:
+				case <-time.After(2 * time.Second):
+				}
+			}
+		}
 	}
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
@@ -603,5 +582,7 @@ func (s *supervisor) Stop(ctx context.Context) error {
 	return nil
 }
 
-var sysProcAttr = func() any { return nil }
-var ctrlBreak = func(pid int) error { return nil }
+var (
+	sysProcAttr  = func() *syscall.SysProcAttr { return nil }
+	gracefulStop = func(_ int) error { return nil }
+)

@@ -223,7 +223,7 @@ func TestCleanupStaleKillsOnlyStale(t *testing.T) {
 	var mu sync.Mutex
 	aliveFn := func(pid int) bool { return pid == 1 }
 	hlthFn := func(port int) bool { return port == 10 }
-	cmdFn := func(pid int) (string, error) { return "mineru-kit api-server --port 10", nil }
+	cmdFn := func(_ int) (string, error) { return "mineru-kit api-server --port 10", nil }
 	killFn := func(pid int) error {
 		mu.Lock()
 		defer mu.Unlock()
@@ -259,13 +259,13 @@ func TestStartStartupFailureWording(t *testing.T) {
 	defer func() { lookPath = origLook }()
 
 	origExec := execCommand
-	execCommand = func(name string, args ...string) *exec.Cmd {
-		return exec.Command("cmd", "/C", "exit 1")
+	execCommand = func(_ string, _ ...string) *exec.Cmd {
+		return exec.Command("sh", "-c", "exit 1")
 	}
 	defer func() { execCommand = origExec }()
 
 	origWait := waitReady
-	waitReady = func(ctx context.Context, port int) (int64, error) { return 0, errors.New("not ready") }
+	waitReady = func(_ context.Context, _ int) (int64, error) { return 0, errors.New("not ready") }
 	defer func() { waitReady = origWait }()
 
 	sup := New(Options{Project: "myproj", Tier: "advanced", Workers: 1, Port: 1234})

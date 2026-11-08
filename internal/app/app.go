@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/pflag"
 )
 
+// Config holds the parsed command line for one run.
 type Config struct {
 	Roots              []string
 	Workers            int
@@ -23,10 +24,11 @@ type Config struct {
 	Err                io.Writer
 }
 
+// Defaults returns the built-in configuration, honouring MINERU_PROJECT.
 func Defaults() Config {
 	project := os.Getenv("MINERU_PROJECT")
 	if project == "" {
-		project = "D:/Projects/Python/MinerU"
+		project = "/home/qxyhappy/Projects/MinerU"
 	}
 	return Config{
 		Workers: 2,
@@ -38,6 +40,7 @@ func Defaults() Config {
 	}
 }
 
+// Parse fills a Config from args and requires at least one root.
 func Parse(args []string) (Config, error) {
 	cfg := Defaults()
 	fs := pflag.NewFlagSet("mineru-ocr", pflag.ContinueOnError)
