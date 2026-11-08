@@ -1,0 +1,39 @@
+version: "3"
+
+tasks:
+  default:
+    desc: Format check, lint and test
+    cmds:
+      - task: check
+
+  fmt:
+    desc: Format Go sources with gofumpt
+    cmds:
+      - golangci-lint fmt ./...
+
+  fmt:check:
+    desc: Fail without rewriting if any file is not gofumpt-formatted
+    cmds:
+      - golangci-lint fmt --diff ./...
+
+  lint:
+    desc: Lint with revive
+    cmds:
+      - golangci-lint run ./...
+
+  test:
+    desc: Run unit tests
+    cmds:
+      - go test ./...
+
+  e2e:
+    desc: Run real-service end-to-end tests (needs uv, MinerU project and local models)
+    cmds:
+      - go test -tags=e2e ./internal/e2e -v -timeout 900s
+
+  check:
+    desc: Everything CI would run
+    cmds:
+      - task: fmt:check
+      - task: lint
+      - task: test
