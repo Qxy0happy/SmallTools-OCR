@@ -133,6 +133,7 @@ MINERU_PROJECT=~/src/MinerU mineru-ocr ~/docs
 - **启动失败**：退出码 3 或日志含 `address already in use` → 换端口重试一次；`Unsupported tier` → 直接退出 2；其他 → 提示 `uv run --project <project> mineru-kit models download`
 - **存活**：运行中每 5s 探一次健康，连续 3 次失败（服务已退出时健康检查同样失败）→ 停止派发、等在飞任务、退出 2
 - **关停**：对进程组发 `SIGTERM` → 等 5s → 未退则 `SIGKILL` 整组 → 确认端口不再可连（≤5s）
+- **档位不是两套**：服务启动日志里的 `startup tier standard` 是 MinerU 的**模型部署档位**（只有 `basic`/`standard`，`advanced` 复用 `standard` 的模型配置），不代表请求档位被降级；服务实际能提供的档位看 `GET /v1/tiers`，`--tier advanced` 下会列出 `flash`/`basic`/`standard`/`advanced`
 - **残留清理**：启动前对状态文件里的 `service` 记录做三判据校验——pid 存活（`/proc/<pid>/stat` 的 state 非 `Z`/`X`）、记录的端口 `/v1/health` 返回 200、`/proc/<pid>/cmdline` 含 `mineru-kit`、`api-server` 与 `--port <port>`——三条同时满足才杀，否则只警告
 
 ## 开发
