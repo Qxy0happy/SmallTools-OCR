@@ -116,11 +116,15 @@ func (f *fakeTasks) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 type fakeSup struct {
 	port       int
 	healthErr  error
+	startErr   error
 	mu         sync.Mutex
 	stopCalled bool
 }
 
 func (s *fakeSup) Start(_ context.Context) (report.ServiceInfo, error) {
+	if s.startErr != nil {
+		return report.ServiceInfo{}, s.startErr
+	}
 	return report.ServiceInfo{Port: s.port, ReadyMS: 1}, nil
 }
 func (s *fakeSup) Health(_ context.Context) error { return s.healthErr }
@@ -473,5 +477,22 @@ func TestRunSlowHealthyServiceProcessesEveryFile(t *testing.T) {
 	}
 	if r.Completed != 2 || r.Failed != 0 {
 		t.Fatalf("completed=%d failed=%d", r.Completed, r.Failed)
+	}
+}
+
+// Ctrl+C while the service is still starting must exit 130, not 2.
+func TestRunInterruptDuringStartupExits130(t *testing.T) {
+	dir := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	sup := &fakeSup{startErr: context.Canceled}
+	cfg, _, _ := newCfg(dir, false)
+	cfg.Roots = []string{dir}
+	deps := Deps{
+		NewClient:     func(baseURL string) *mineru.Client { return mineru.New(baseURL) },
+		NewSupervisor: func(_ service.Options) service.Supervisor { return sup },
+	}
+	if code := Run(ctx, cfg, deps); code != 130 {
+		t.Fatalf("exit %d, want 130", code)
 	}
 }

@@ -491,7 +491,17 @@ func (s *supervisor) Start(ctx context.Context) (report.ServiceInfo, error) {
 			}
 		case <-time.After(100 * time.Millisecond):
 		}
-		_ = defaultKill(s.uvPID)
+		if ctx.Err() != nil && !exited {
+			// Interrupted while starting: shut the service down gracefully.
+			_ = gracefulStop(s.uvPID)
+			select {
+			case <-s.doneCh:
+			case <-time.After(5 * time.Second):
+				_ = defaultKill(s.uvPID)
+			}
+		} else {
+			_ = defaultKill(s.uvPID)
+		}
 		if s.logFile != nil {
 			s.logFile.Close()
 			s.logFile = nil

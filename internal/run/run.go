@@ -179,6 +179,10 @@ func Run(ctx context.Context, cfg app.Config, deps ...Deps) int {
 				fmt.Fprintln(cfg.Err, l)
 			}
 		}
+		if ctx.Err() != nil {
+			fmt.Fprintln(cfg.Err, "interrupted during startup")
+			return 130
+		}
 		fmt.Fprintln(cfg.Err, err)
 		return 2
 	}
