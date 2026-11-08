@@ -160,4 +160,4 @@ MINERU_PROJECT=~/src/MinerU mineru-ocr ~/docs
 
 ## 许可证
 
-仓库目前未附带许可证文件。
+[MIT](LICENSE) © 2026 Qxy0happy
