@@ -11,6 +11,12 @@ tasks:
     cmds:
       - golangci-lint fmt ./...
 
+  build:
+    desc: Build ./bin/mineru-ocr
+    cmds:
+      - mkdir -p bin
+      - go build -trimpath -o bin/mineru-ocr ./cmd/mineru-ocr
+
   fmt:check:
     desc: Fail without rewriting if any file is not gofumpt-formatted
     cmds:
