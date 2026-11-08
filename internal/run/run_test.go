@@ -416,3 +416,62 @@ func TestRunCleansStaleServiceRecord(t *testing.T) {
 		t.Fatalf("service record not cleared: %+v", after.Service)
 	}
 }
+
+// slowTasks keeps every task pending for delay per poll, so one file takes
+// longer to process than a short in-flight grace.
+type slowTasks struct{ delay time.Duration }
+
+func (s slowTasks) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	switch {
+	case r.Method == http.MethodPost && r.URL.Path == "/v1/tasks":
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		json.NewEncoder(w).Encode(map[string]any{
+			"task_id": "t",
+			"status":  "pending",
+			"files":   []map[string]any{{"status": "pending", "upload": map[string]any{"url": "/upload"}}},
+		})
+	case r.URL.Path == "/upload":
+		w.WriteHeader(http.StatusOK)
+	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/tasks/"):
+		time.Sleep(s.delay)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"status": "completed",
+			"files":  []map[string]any{{"status": "completed", "result_url": "/download"}},
+		})
+	case r.URL.Path == "/download":
+		w.Header().Set("Content-Type", "application/zip")
+		zw := zip.NewWriter(w)
+		fw, _ := zw.Create("markdown.md")
+		fw.Write([]byte("# hi"))
+		zw.Close()
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+// A healthy service must never be stopped by the lost-service grace, however
+// long the files take.
+func TestRunSlowHealthyServiceProcessesEveryFile(t *testing.T) {
+	orig := inFlightGrace
+	inFlightGrace = 20 * time.Millisecond
+	defer func() { inFlightGrace = orig }()
+
+	dir := t.TempDir()
+	srv := httptest.NewServer(slowTasks{delay: 15 * time.Millisecond})
+	defer srv.Close()
+	cfg, out, _ := newCfg(dir, true)
+	cfg.Workers = 1
+	code, _, _, _ := runCase(t, dir, []string{"a.pdf", "b.pdf"}, cfg, srv, nil, nil)
+	if code != 0 {
+		t.Fatalf("exit %d, want 0", code)
+	}
+	var r report.Report
+	if err := json.Unmarshal(out.Bytes(), &r); err != nil {
+		t.Fatal(err)
+	}
+	if r.Completed != 2 || r.Failed != 0 {
+		t.Fatalf("completed=%d failed=%d", r.Completed, r.Failed)
+	}
+}

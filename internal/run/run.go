@@ -20,6 +20,9 @@ import (
 	"mineru-ocr/internal/state"
 )
 
+// inFlightGrace bounds how long a lost service may keep in-flight files.
+var inFlightGrace = 30 * time.Second
+
 // Deps overrides the run's collaborators; nil fields use the real implementations.
 type Deps struct {
 	NewClient     func(baseURL string) *mineru.Client
@@ -262,12 +265,20 @@ func Run(ctx context.Context, cfg app.Config, deps ...Deps) int {
 		close(jobs)
 	}()
 
-	// wait workers with 30s cap on lost
+	// Wait for the workers. A healthy service bounds each file by its own
+	// request timeouts, so there is no overall deadline here; only a lost
+	// service gets the grace period.
 	waitDone := make(chan struct{})
 	go func() { wg.Wait(); close(waitDone) }()
 	select {
 	case <-waitDone:
-	case <-time.After(30 * time.Second):
+	case <-lostCh:
+		// The dispatcher has stopped feeding jobs and the monitor canceled ctx;
+		// give the in-flight files a bounded grace before shutting down.
+		select {
+		case <-waitDone:
+		case <-time.After(inFlightGrace):
+		}
 	}
 
 	// determine canceled
